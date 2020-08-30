@@ -1,4 +1,6 @@
-var connection = new WebSocket('ws://esp8266.local:81/', ['arduino']);
+
+var connection = new WebSocket('ws://'+location.hostname+':81/', ['arduino']);
+//var connection = new WebSocket('ws://esp8266.local:81/', ['arduino']); // Debug from local computer
 connection.onopen = function () {
     connection.send('Connect ' + new Date());
 };

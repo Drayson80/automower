@@ -22,25 +22,26 @@ WebSocketsServer webSocket(81);         // create a websocket server on port 81
 
 File fsUploadFile;                      // a File variable to temporarily store the received file
 
-const char *ssid = "Automower";         // The name of the Wi-Fi network that will be created
+const char *ssid = "automower";         // The name of the Wi-Fi network that will be created
 const char *password = "robertsson";    // The password required to connect to it, leave blank for an open network
 
-const char *OTAName = "ESP8266";        // A name and a password for the OTA service
-const char *OTAPassword = "esp8266";
+const char *OTAName = "automower";        // A name and a password for the OTA service
+const char *OTAPassword = "automower";
 
 #define LED_RED     15            // specify the pins with an RGB LED connected
 #define LED_GREEN   12
-#define LED_BLUE    13
+#define LED_BLUE    2
 
-const char* mdnsName = "esp8266";     // Domain name for the mDNS responder
+const char* mdnsName = "automower";     // Domain name for the mDNS responder
 
 /*__________________________________________________________SETUP__________________________________________________________*/
 
 void setup() {
-  pinMode(LED_RED, OUTPUT);    // the pins with LEDs connected are outputs
-  pinMode(LED_GREEN, OUTPUT);
+  //pinMode(LED_RED, OUTPUT);    // the pins with LEDs connected are outputs
+  //pinMode(LED_GREEN, OUTPUT);
   pinMode(LED_BLUE, OUTPUT);
-
+  digitalWrite(LED_BLUE, 0);
+  
   Serial.begin(74880);        // Start the Serial communication to send messages to the computer
   delay(10);
   Serial.println("\r\n");
@@ -59,6 +60,7 @@ void setup() {
 
   startServer();               // Start a HTTP server with a file read handler and an upload handler
   
+  digitalWrite(LED_BLUE, 1);
 }
 
 /*__________________________________________________________LOOP__________________________________________________________*/
@@ -106,7 +108,7 @@ void startWiFi() { // Start a Wi-Fi access point, and try to connect to some giv
   Serial.println("\" started\r\n");
 
   wifiMulti.addAP("Printerzone", "zmoddans");   // add Wi-Fi networks you want to connect to
-  //wifiMulti.addAP("ssid_from_AP_2", "your_password_for_AP_2");
+  wifiMulti.addAP("ddwrt", "RobertssoN1337");
   //wifiMulti.addAP("ssid_from_AP_3", "your_password_for_AP_3");
 
   Serial.println("Connecting");
@@ -128,13 +130,11 @@ void startWiFi() { // Start a Wi-Fi access point, and try to connect to some giv
 
 void startOTA() { // Start the OTA service
   ArduinoOTA.setHostname(OTAName);
-  ArduinoOTA.setPassword(OTAPassword);
+  //ArduinoOTA.setPassword(OTAPassword);
 
   ArduinoOTA.onStart([]() {
     Serial.println("Start");
-    digitalWrite(LED_RED, 0);    // turn off the LEDs
-    digitalWrite(LED_GREEN, 0);
-    digitalWrite(LED_BLUE, 0);
+    digitalWrite(LED_BLUE, 1); // turn off the LEDs
   });
   ArduinoOTA.onEnd([]() {
     Serial.println("\r\nEnd");
