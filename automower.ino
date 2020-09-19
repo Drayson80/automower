@@ -3,75 +3,23 @@
 #include <ArduinoOTA.h>
 #include <ESP8266WebServer.h>
 #include <ESP8266mDNS.h>
-#include <FS.h>
 #include <LittleFS.h>
 #include <WebSocketsServer.h>
 #include <ESP_EEPROM.h>
+#include <Ticker.h>
+#include <string.h>
+#include <NTPClient.h>
+
+#define LOG
+#ifdef LOG
+  #define _LOG(a) strcat(logStr, a)
+  //#define _LOG(a) strcat(strcat(logStr, "\n"), a)
+  //#define _LOG(a) memset(tempStr, 0, sizeof tempStr); strcat(tempStr, a); strcat(tempStr, "\n"); strcat(logStr, tempStr);
+#else
+  #define _LOG(a)
+#endif
 
 /*__________________________________________________________CONSTANTS__________________________________________________________*/
-
-// The neatest way to access variables stored in EEPROM is using a structure
-struct saveStruct {
-  uint16_t  timerManMode;
-} eepromVar1;
-
-ESP8266WiFiMulti wifiMulti;             // Create an instance of the ESP8266WiFiMulti class, called 'wifiMulti'
-
-ESP8266WebServer server(80);            // create a web server on port 80
-WebSocketsServer webSocket(81);         // create a websocket server on port 81
-
-File fsUploadFile;                      // a File variable to temporarily store the received file
-
-const char *ssid = "automower";         // The name of the Wi-Fi network that will be created
-const char *password = "robertsson";    // The password required to connect to it, leave blank for an open network
-
-const char *OTAName = "automower";        // A name and a password for the OTA service
-const char *OTAPassword = "automower";
-
-#define LED_RED     15            // specify the pins with an RGB LED connected
-#define LED_GREEN   12
-#define LED_BLUE    2
-
-const char* mdnsName = "automower";     // Domain name for the mDNS responder
-
-/*__________________________________________________________SETUP__________________________________________________________*/
-
-void setup() {
-  //pinMode(LED_RED, OUTPUT);    // the pins with LEDs connected are outputs
-  //pinMode(LED_GREEN, OUTPUT);
-  pinMode(LED_BLUE, OUTPUT);
-  digitalWrite(LED_BLUE, 0);
-  
-  Serial.begin(74880);        // Start the Serial communication to send messages to the computer
-  delay(10);
-  Serial.println("\r\n");
-
-  loadEEPROM();                // Fetch setup values
-  
-  startWiFi();                 // Start a Wi-Fi access point, and try to connect to some given access points. Then wait for either an AP or STA connection
-  
-  startOTA();                  // Start the OTA service
-  
-  startLittleFS();             // Start the LittleFS and list all contents
-
-  startWebSocket();            // Start a WebSocket server
-  
-  startMDNS();                 // Start the mDNS responder
-
-  startServer();               // Start a HTTP server with a file read handler and an upload handler
-  
-  digitalWrite(LED_BLUE, 1);
-}
-
-/*__________________________________________________________LOOP__________________________________________________________*/
-unsigned long prevMillis = millis();
-int hue = 0;
-
-void loop() {
-  webSocket.loop();                           // constantly check for websocket events
-  server.handleClient();                      // run the server
-  ArduinoOTA.handle();                        // listen for OTA events
-}
 
 struct allcommands {
   uint8_t R_STATUS[5] = {0xf,0x1,0xf1,0x0,0x0};
@@ -145,7 +93,533 @@ struct allcommands {
   uint8_t W_KEY_YES[5] = {0xf,0x80,0x5f,0x0,0x12,};
 } commands;
 
+// The neatest way to access variables stored in EEPROM is using a structure
+struct saveStruct {
+  uint16_t  timerManMode;
+} eepromVar1;
+
+// Time keeping
+WiFiUDP ntpUDP;
+NTPClient timeClient(ntpUDP);
+
+// Wifi
+ESP8266WiFiMulti wifiMulti;             // Create an instance of the ESP8266WiFiMulti class, called 'wifiMulti'
+ESP8266WebServer server(80);            // create a web server on port 80
+WebSocketsServer webSocket(81);         // create a websocket server on port 81
+
+File fsUploadFile;                      // a File variable to temporarily store the received file
+
+const char *ssid = "automower";         // The name of the Wi-Fi network that will be created
+const char *password = "robertsson";    // The password required to connect to it, leave blank for an open network
+
+const char *OTAName = "automower";        // A name and a password for the OTA service
+const char *OTAPassword = "automower";
+
+const char* mdnsName = "automower";     // Domain name for the mDNS responder
+
+Ticker sendCommand, readBuffer, wrteLog;
+
+uint8_t statusAutomower[5];
+
+bool logg = true;
+char logPath[] = "/logs/logfile.txt";
+File f;
+char logStr[500];
+char tempStr[50];
+
+#define LED_BLUE 2                   // specify the pins with an RGB LED connected
+
+/* ////////////////////////////////////////////////////////////////////////////////////////////////
+ */
+const char* fsName = "LittleFS";
+FS* fileSystem = &LittleFS;
+LittleFSConfig fileSystemConfig = LittleFSConfig();
+static bool fsOK;
+String unsupportedFiles = String();
+File uploadFile;
+#define DBG_OUTPUT_PORT Serial
+
+static const char TEXT_PLAIN[] PROGMEM = "text/plain";
+static const char FS_INIT_ERROR[] PROGMEM = "FS INIT ERROR";
+static const char FILE_NOT_FOUND[] PROGMEM = "FileNotFound";
+
+////////////////////////////////
+// Utils to return HTTP codes, and determine content-type
+
+void replyOK() {
+  server.send(200, FPSTR(TEXT_PLAIN), "");
+}
+
+void replyOKWithMsg(String msg) {
+  server.send(200, FPSTR(TEXT_PLAIN), msg);
+}
+
+void replyNotFound(String msg) {
+  server.send(404, FPSTR(TEXT_PLAIN), msg);
+}
+
+void replyBadRequest(String msg) {
+  DBG_OUTPUT_PORT.println(msg);
+  server.send(400, FPSTR(TEXT_PLAIN), msg + "\r\n");
+}
+
+void replyServerError(String msg) {
+  DBG_OUTPUT_PORT.println(msg);
+  server.send(500, FPSTR(TEXT_PLAIN), msg + "\r\n");
+}
+
+////////////////////////////////
+// Request handlers
+
+/*
+   Return the FS type, status and size info
+*/
+void handleStatus() {
+  DBG_OUTPUT_PORT.println("handleStatus");
+  FSInfo fs_info;
+  String json;
+  json.reserve(128);
+
+  json = "{\"type\":\"";
+  json += fsName;
+  json += "\", \"isOk\":";
+  if (fsOK) {
+    fileSystem->info(fs_info);
+    json += F("\"true\", \"totalBytes\":\"");
+    json += fs_info.totalBytes;
+    json += F("\", \"usedBytes\":\"");
+    json += fs_info.usedBytes;
+    json += "\"";
+  } else {
+    json += "\"false\"";
+  }
+  json += F(",\"unsupportedFiles\":\"");
+  json += unsupportedFiles;
+  json += "\"}";
+
+  server.send(200, "application/json", json);
+}
+
+
+/*
+   Return the list of files in the directory specified by the "dir" query string parameter.
+   Also demonstrates the use of chuncked responses.
+*/
+void handleFileList() {
+  if (!fsOK) {
+    return replyServerError(FPSTR(FS_INIT_ERROR));
+  }
+
+  if (!server.hasArg("dir")) {
+    return replyBadRequest(F("DIR ARG MISSING"));
+  }
+
+  String path = server.arg("dir");
+  if (path != "/" && !fileSystem->exists(path)) {
+    return replyBadRequest("BAD PATH");
+  }
+
+  DBG_OUTPUT_PORT.println(String("handleFileList: ") + path);
+  Dir dir = fileSystem->openDir(path);
+  path.clear();
+
+  // use HTTP/1.1 Chunked response to avoid building a huge temporary string
+  if (!server.chunkedResponseModeStart(200, "text/json")) {
+    server.send(505, F("text/html"), F("HTTP1.1 required"));
+    return;
+  }
+
+  // use the same string for every line
+  String output;
+  output.reserve(64);
+  while (dir.next()) {
+    if (output.length()) {
+      // send string from previous iteration
+      // as an HTTP chunk
+      server.sendContent(output);
+      output = ',';
+    } else {
+      output = '[';
+    }
+
+    output += "{\"type\":\"";
+    if (dir.isDirectory()) {
+      output += "dir";
+    } else {
+      output += F("file\",\"size\":\"");
+      output += dir.fileSize();
+    }
+
+    output += F("\",\"name\":\"");
+    // Always return names without leading "/"
+    if (dir.fileName()[0] == '/') {
+      output += &(dir.fileName()[1]);
+    } else {
+      output += dir.fileName();
+    }
+
+    output += "\"}";
+  }
+
+  // send last string
+  output += "]";
+  server.sendContent(output);
+  server.chunkedResponseFinalize();
+}
+
+
+/*
+   Read the given file from the filesystem and stream it back to the client
+*/
+bool handleFileRead(String path) {
+  DBG_OUTPUT_PORT.println(String("handleFileRead: ") + path);
+  if (!fsOK) {
+    replyServerError(FPSTR(FS_INIT_ERROR));
+    return true;
+  }
+
+  if (path.endsWith("/")) {
+    path += "index.htm";
+  }
+
+  String contentType;
+  if (server.hasArg("download")) {
+    contentType = F("application/octet-stream");
+  } else {
+    contentType = mime::getContentType(path);
+  }
+
+  if (!fileSystem->exists(path)) {
+    // File not found, try gzip version
+    path = path + ".gz";
+  }
+  if (fileSystem->exists(path)) {
+    File file = fileSystem->open(path, "r");
+    if (server.streamFile(file, contentType) != file.size()) {
+      DBG_OUTPUT_PORT.println("Sent less data than expected!");
+    }
+    file.close();
+    return true;
+  }
+
+  return false;
+}
+
+
+/*
+   As some FS (e.g. LittleFS) delete the parent folder when the last child has been removed,
+   return the path of the closest parent still existing
+*/
+String lastExistingParent(String path) {
+  while (!path.isEmpty() && !fileSystem->exists(path)) {
+    if (path.lastIndexOf('/') > 0) {
+      path = path.substring(0, path.lastIndexOf('/'));
+    } else {
+      path = String();  // No slash => the top folder does not exist
+    }
+  }
+  DBG_OUTPUT_PORT.println(String("Last existing parent: ") + path);
+  return path;
+}
+
+/*
+   Handle the creation/rename of a new file
+   Operation      | req.responseText
+   ---------------+--------------------------------------------------------------
+   Create file    | parent of created file
+   Create folder  | parent of created folder
+   Rename file    | parent of source file
+   Move file      | parent of source file, or remaining ancestor
+   Rename folder  | parent of source folder
+   Move folder    | parent of source folder, or remaining ancestor
+*/
+void handleFileCreate() {
+  if (!fsOK) {
+    return replyServerError(FPSTR(FS_INIT_ERROR));
+  }
+
+  String path = server.arg("path");
+  if (path.isEmpty()) {
+    return replyBadRequest(F("PATH ARG MISSING"));
+  }
+
+  if (path == "/") {
+    return replyBadRequest("BAD PATH");
+  }
+  if (fileSystem->exists(path)) {
+    return replyBadRequest(F("PATH FILE EXISTS"));
+  }
+
+  String src = server.arg("src");
+  if (src.isEmpty()) {
+    // No source specified: creation
+    DBG_OUTPUT_PORT.println(String("handleFileCreate: ") + path);
+    if (path.endsWith("/")) {
+      // Create a folder
+      path.remove(path.length() - 1);
+      if (!fileSystem->mkdir(path)) {
+        return replyServerError(F("MKDIR FAILED"));
+      }
+    } else {
+      // Create a file
+      File file = fileSystem->open(path, "w");
+      if (file) {
+        file.write((const char *)0);
+        file.close();
+      } else {
+        return replyServerError(F("CREATE FAILED"));
+      }
+    }
+    if (path.lastIndexOf('/') > -1) {
+      path = path.substring(0, path.lastIndexOf('/'));
+    }
+    replyOKWithMsg(path);
+  } else {
+    // Source specified: rename
+    if (src == "/") {
+      return replyBadRequest("BAD SRC");
+    }
+    if (!fileSystem->exists(src)) {
+      return replyBadRequest(F("SRC FILE NOT FOUND"));
+    }
+
+    DBG_OUTPUT_PORT.println(String("handleFileCreate: ") + path + " from " + src);
+
+    if (path.endsWith("/")) {
+      path.remove(path.length() - 1);
+    }
+    if (src.endsWith("/")) {
+      src.remove(src.length() - 1);
+    }
+    if (!fileSystem->rename(src, path)) {
+      return replyServerError(F("RENAME FAILED"));
+    }
+    replyOKWithMsg(lastExistingParent(src));
+  }
+}
+
+
+/*
+   Delete the file or folder designed by the given path.
+   If it's a file, delete it.
+   If it's a folder, delete all nested contents first then the folder itself
+
+   IMPORTANT NOTE: using recursion is generally not recommended on embedded devices and can lead to crashes (stack overflow errors).
+   This use is just for demonstration purpose, and FSBrowser might crash in case of deeply nested filesystems.
+   Please don't do this on a production system.
+*/
+void deleteRecursive(String path) {
+  File file = fileSystem->open(path, "r");
+  bool isDir = file.isDirectory();
+  file.close();
+
+  // If it's a plain file, delete it
+  if (!isDir) {
+    fileSystem->remove(path);
+    return;
+  }
+
+  // Otherwise delete its contents first
+  Dir dir = fileSystem->openDir(path);
+
+  while (dir.next()) {
+    deleteRecursive(path + '/' + dir.fileName());
+  }
+
+  // Then delete the folder itself
+  fileSystem->rmdir(path);
+}
+
+/*
+   Handle a file deletion request
+   Operation      | req.responseText
+   ---------------+--------------------------------------------------------------
+   Delete file    | parent of deleted file, or remaining ancestor
+   Delete folder  | parent of deleted folder, or remaining ancestor
+*/
+void handleFileDelete() {
+  if (!fsOK) {
+    return replyServerError(FPSTR(FS_INIT_ERROR));
+  }
+
+  String path = server.arg(0);
+  if (path.isEmpty() || path == "/") {
+    return replyBadRequest("BAD PATH");
+  }
+
+  DBG_OUTPUT_PORT.println(String("handleFileDelete: ") + path);
+  if (!fileSystem->exists(path)) {
+    return replyNotFound(FPSTR(FILE_NOT_FOUND));
+  }
+  deleteRecursive(path);
+
+  replyOKWithMsg(lastExistingParent(path));
+}
+
+/*
+   Handle a file upload request
+*/
+void handleFileUpload2() {
+  if (!fsOK) {
+    return replyServerError(FPSTR(FS_INIT_ERROR));
+  }
+  if (server.uri() != "/edit") {
+    return;
+  }
+  HTTPUpload& upload = server.upload();
+  if (upload.status == UPLOAD_FILE_START) {
+    String filename = upload.filename;
+    // Make sure paths always start with "/"
+    if (!filename.startsWith("/")) {
+      filename = "/" + filename;
+    }
+    DBG_OUTPUT_PORT.println(String("handleFileUpload Name: ") + filename);
+    uploadFile = fileSystem->open(filename, "w");
+    if (!uploadFile) {
+      return replyServerError(F("CREATE FAILED"));
+    }
+    DBG_OUTPUT_PORT.println(String("Upload: START, filename: ") + filename);
+  } else if (upload.status == UPLOAD_FILE_WRITE) {
+    if (uploadFile) {
+      size_t bytesWritten = uploadFile.write(upload.buf, upload.currentSize);
+      if (bytesWritten != upload.currentSize) {
+        return replyServerError(F("WRITE FAILED"));
+      }
+    }
+    DBG_OUTPUT_PORT.println(String("Upload: WRITE, Bytes: ") + upload.currentSize);
+  } else if (upload.status == UPLOAD_FILE_END) {
+    if (uploadFile) {
+      uploadFile.close();
+    }
+    DBG_OUTPUT_PORT.println(String("Upload: END, Size: ") + upload.totalSize);
+  }
+}
+
+/*
+   The "Not Found" handler catches all URI not explicitely declared in code
+   First try to find and return the requested file from the filesystem,
+   and if it fails, return a 404 page with debug information
+*/
+void handleNotFound() {
+  if (!fsOK) {
+    return replyServerError(FPSTR(FS_INIT_ERROR));
+  }
+
+  String uri = ESP8266WebServer::urlDecode(server.uri()); // required to read paths with blanks
+
+  if (handleFileRead(uri)) {
+    return;
+  }
+
+  // Dump debug data
+  String message;
+  message.reserve(100);
+  message = F("Error: File not found\n\nURI: ");
+  message += uri;
+  message += F("\nMethod: ");
+  message += (server.method() == HTTP_GET) ? "GET" : "POST";
+  message += F("\nArguments: ");
+  message += server.args();
+  message += '\n';
+  for (uint8_t i = 0; i < server.args(); i++) {
+    message += F(" NAME:");
+    message += server.argName(i);
+    message += F("\n VALUE:");
+    message += server.arg(i);
+    message += '\n';
+  }
+  message += "path=";
+  message += server.arg("path");
+  message += '\n';
+  DBG_OUTPUT_PORT.print(message);
+
+  return replyNotFound(message);
+}
+
+/*
+   This specific handler returns the index.htm (or a gzipped version) from the /edit folder.
+   If the file is not present but the flag INCLUDE_FALLBACK_INDEX_HTM has been set, falls back to the version
+   embedded in the program code.
+   Otherwise, fails with a 404 page with debug information
+*/
+void handleGetEdit() {
+  if (handleFileRead(F("/edit/index.htm"))) {
+    return;
+  }
+}
+
+/*__________________________________________________________SETUP__________________________________________________________*/
+
+void setup() {
+  pinMode(LED_BLUE, OUTPUT);    // the pins with LEDs connected are outputs
+  digitalWrite(LED_BLUE, 0);
+  
+  Serial.begin(74880);        // Start the Serial communication to send messages to the computer
+  delay(10);
+  Serial.println("\r\n");
+
+  loadEEPROM();                // Fetch setup values
+  
+  startWiFi();                 // Start a Wi-Fi access point, and try to connect to some given access points. Then wait for either an AP or STA connection
+  
+  startOTA();                  // Start the OTA service
+  
+  startLittleFS();             // Start the LittleFS and list all contents
+  
+  startWebSocket();            // Start a WebSocket server
+  
+  startMDNS();                 // Start the mDNS responder
+
+  startServer();               // Start a HTTP server with a file read handler and an upload handler
+
+  timeClient.begin();          // NTP Client
+  timeClient.update();         // Update time
+  Serial.println(timeClient.getFormattedTime());
+  
+  //startLog();
+  
+  digitalWrite(LED_BLUE, 1);
+
+  sendCommand.attach(10, sendCmd); // Task that sends commands periodically.
+  readBuffer.attach(10, readBuf);  // Takes care of data in serial buffer
+  wrteLog.attach(10, writeLog);   // Write to log file
+}
+
+/*__________________________________________________________LOOP__________________________________________________________*/
+unsigned long prevMillis = millis();
+int hue = 0;
+
+void loop() {
+  webSocket.loop();                           // constantly check for websocket events
+  server.handleClient();                      // run the server
+  ArduinoOTA.handle();                        // listen for OTA events
+}
+
 /*__________________________________________________________SETUP_FUNCTIONS__________________________________________________________*/
+
+void writeLog() {
+  f = LittleFS.open(logPath, "a");
+  _LOG(f ? "LOG: Open log file.\n" : "LOG: FAILED to open file.\n"); 
+  if (f) {
+    f.print(logStr);
+    f.close();
+    memset(logStr, 0, sizeof(logStr));
+  }
+  Serial.printf("logStr size: %u, : %s", sizeof(logStr), logStr);
+}
+
+void readBuf() {
+ //Serial.println("Buff"); 
+ if (Serial.available() > 0 ) {
+   Serial.println("Serial data available");
+ }
+}
+
+void sendCmd() {
+  Serial.printf("Serial mem ready for write: %u millis: %u\n", Serial.availableForWrite(), millis());
+  Serial.write(commands.R_STATUS, 5);
+  //Serial.println("Inside mow status:");
+}
 
 void loadEEPROM() {
   EEPROM.begin(sizeof(saveStruct));
@@ -222,7 +696,10 @@ void startOTA() { // Start the OTA service
 }
 
 void startLittleFS() { // Start the LittleFS and list all contents
-  LittleFS.begin();                             // Start the SPI Flash File System (LittleFS)
+  fileSystemConfig.setAutoFormat(false);
+  fileSystem->setConfig(fileSystemConfig);
+  fsOK = fileSystem->begin();  
+  //LittleFS.begin();                             // Start the SPI Flash File System (LittleFS)
   Serial.println("LittleFS started. Contents:");
   {
     Dir dir = LittleFS.openDir("/");
@@ -249,42 +726,37 @@ void startMDNS() { // Start the mDNS responder
 }
 
 void startServer() { // Start a HTTP server with a file read handler and an upload handler
-  server.on("/edit.html",  HTTP_POST, []() {  // If a POST request is sent to the /edit.html address,
+  server.on("/ed.html",  HTTP_POST, []() {  // If a POST request is sent to the /edit.html address,
     server.send(200, "text/plain", ""); 
   }, handleFileUpload);                       // go to 'handleFileUpload'
 
+  // Filesystem status
+  server.on("/status", HTTP_GET, handleStatus);
+
+  // List directory
+  server.on("/list", HTTP_GET, handleFileList);
+
+  // Load editor
+  server.on("/edit", HTTP_GET, handleGetEdit);
+
+  // Create file
+  server.on("/edit",  HTTP_PUT, handleFileCreate);
+
+  // Delete file
+  server.on("/edit",  HTTP_DELETE, handleFileDelete);
+  
+  // Upload file
+  // - first callback is called after the request has ended with all parsed arguments
+  // - second callback handles file upload at that location
+  server.on("/edit",  HTTP_POST, replyOK, handleFileUpload2);
+  
   server.onNotFound(handleNotFound);          // if someone requests any other file or page, go to function 'handleNotFound'
                                               // and check if the file exists
-
   server.begin();                             // start the HTTP server
   Serial.println("HTTP server started.");
 }
 
 /*__________________________________________________________SERVER_HANDLERS__________________________________________________________*/
-
-void handleNotFound(){ // if the requested file or page doesn't exist, return a 404 not found error
-  if(!handleFileRead(server.uri())){          // check if the file exists in the flash memory (LittleFS), if so, send it
-    server.send(404, "text/plain", "404: File Not Found");
-  }
-}
-
-bool handleFileRead(String path) { // send the right file to the client (if it exists)
-  Serial.println("handleFileRead: " + path);
-  if (path.endsWith("/")) path += "index.html";          // If a folder is requested, send the index file
-  String contentType = getContentType(path);             // Get the MIME type
-  String pathWithGz = path + ".gz";
-  if (LittleFS.exists(pathWithGz) || LittleFS.exists(path)) { // If the file exists, either as a compressed archive, or normal
-    if (LittleFS.exists(pathWithGz))                         // If there's a compressed version available
-      path += ".gz";                                         // Use the compressed verion
-    File file = LittleFS.open(path, "r");                    // Open the file
-    size_t sent = server.streamFile(file, contentType);    // Send it to the client
-    file.close();                                          // Close the file again
-    Serial.println(String("\tSent file: ") + path);
-    return true;
-  }
-  Serial.println(String("\tFile Not Found: ") + path);   // If the file doesn't exist, return false
-  return false;
-}
 
 void handleFileUpload(){ // upload a new file to the LittleFS
   HTTPUpload& upload = server.upload();
