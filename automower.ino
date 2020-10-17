@@ -96,9 +96,10 @@ const char *mdnsName = "automower";       // Domain name for the mDNS responder
 const char *ssid = STASSID;
 const char *password = STAPSK;
 
-unsigned long tSendCmd = 0, tLatestTimeSynch = 0;
-unsigned long tZero=0; // Hour and Minutes and seconds at the time of synch.
-int8_t hour=-1, minute=-1, seconds=-1;
+unsigned long tSendCmd = 0;           // millis() for latest request.
+//unsigned long tLatestTimeSynch = 0;   // millis()   
+unsigned long tZero=0;                // millis() at sync.
+int8_t hour=-1, minute=-1, seconds=-1;// time at sync
 
 // The neatest way to access variables stored in EEPROM is using a structure
 struct saveStruct {
@@ -207,6 +208,17 @@ struct allcommands {
   uint8_t W_KEY_DOWN[5] = {0xf,0x80,0x5f,0x0,0x11};
   uint8_t W_KEY_YES[5] = {0xf,0x80,0x5f,0x0,0x12};
 } commands;
+
+// Message structure.
+struct msgStruct {
+  unsigned long tMsg;
+  uint8_t data[6]="";
+} ;
+
+struct fifo {
+  msgStruct msg[10];
+  uint8_t n = 0;      // How many items
+} fifoReq;
 
 ////////////////////////////////
 // Utils to return HTTP codes, and determine content-type
@@ -699,6 +711,24 @@ int sendReq( uint8_t *request, int len ) {
   return 0;
 }
 
+//int sendReqv2( ) {
+//  //char requestAutomower[6] = ""; // Store the request to send
+//  //uint8_t *ptr;
+//  //ptr = request;
+//  int len = sizeof(fifoReq.n);
+//  
+//  DBG_OUTPUT_PORT.printf("[Insert time here]: Len %d Sent data 0x%0*x 0x%0*x 0x%0*x 0x%0*x 0x%0*x to autmower.\n", len, 2, request->data[0], 2, request->data[1], 2, request->data[2], 2, request->data[3], 2, request->data[4]);
+//
+//  if ( len > 5 || len < 5 ) {
+//    return 1; // Error
+//  } else if ( len == 5 ) {
+//    SEND_PORT.write(request->data, 5);
+//    tSendCmd = millis();
+//    writeToLogBuffer(LOG_SEND_BYTES, 0, request->data); 
+//  }
+//  return 0;
+//}
+
 ////////////////////////////////
 // GET RESPONSE
 int getResp(){
@@ -707,9 +737,11 @@ int getResp(){
   ptr = recvAutomower;
   
   int n = RCV_PORT.readBytes(recvAutomower, 5);
-  if ( n > 5 ) _LOG("[Insert time here]: Found more >= 5 bytes in buffer.\n");
+  if ( n > 5 ) _LOG("Found more >= 5 bytes in buffer.\n");
   writeToLogBuffer(LOG_READ_BYTES, n, ptr);       // Write received bytes to log buffer
 
+
+  // Just for debugging
   int process = 10;
   return process;
 }
@@ -744,13 +776,21 @@ void readBuf() {
   //DBG_OUTPUT_PORT.printf("tCurrent: %lx, tSendCmd %lx, villkor a: %u, villkor b: %u \n", tCurrent, tSendCmd, (tCurrent > tSendCmd+tWait),(tCurrent < (0xFFFFFFFF-(tWait-1))));
   if ( tCurrent > tSendCmd+tWait                  // Give some time for autmower to answer our request.
        && tCurrent < (0xFFFFFFFF-(tWait-1)) ) {   // Deal with wrap around
-    while (RCV_PORT.available() > 0) {
+    while (RCV_PORT.available() > 0) {            // Ready data in 5 bytes chunks.
         int n = RCV_PORT.readBytes(recvAutomower, 5);
         if ( n > 5 ) _LOG("[Insert time here]: Found more >= 5 bytes in buffer.\n");  
         writeToLogBuffer(LOG_READ_BYTES, n, ptr);        // Write received bytes to log buffer
+        checkResp(ptr);                        // Process response
         memset(recvAutomower, 0, sizeof(recvAutomower)); // Set all to 0.
     }
   }
+}
+
+////////////////////////////////
+// Check data and update global variables
+void checkResp(uint8_t *data) {
+  DBG_OUTPUT_PORT.printf("checkResp 0x%0*x 0x%0*x 0x%0*x 0x%0*x 0x%0*x to autmower\n", data[0], 2, data[1], 2, data[2], 2, data[3], 2, data[4]);
+  
 }
 
 ////////////////////////////////
@@ -765,31 +805,29 @@ void writeToLogBuffer(uint8_t type, int n, uint8_t *requestAutomower){
   
   if( type == LOG_READ_BYTES ) {
     DBG_OUTPUT_PORT.printf("Read bytes %u\n", n);
-    sprintf(temp, "[Insert time here]: Incoming data %i bytes ", n);
+    sprintf(temp, "[%0*u:%0*u:%0*u]: Incoming data %i bytes ", 2, hour, 2, minut, 2, sekund, n);
     
     for (int i=0; i < n; i++) {
       sprintf(temp1, "0x%x ", statusAutomower[i]);
       strcat(temp, temp1);
-      DEBUG_PRINTLN("Loop thru bytes");
-      memset(temp1, 0, sizeof(temp1));   // Reset temp1 
+      memset(temp1, 0, sizeof(temp1));   // Reset temp1
     }
     strcat(temp, "\n");
-    _LOG(temp);
-    memset(temp, 0, sizeof(temp));      // Reset temp
 
   } else if ( type == LOG_SEND_BYTES ) {
-    //sprintf(temp,"hej\n");
-    sprintf(temp, "[%0*u:%0*u:%0*u]: Sent data 0x%0*x 0x%0*x 0x%0*x 0x%0*x 0x%0*x to autmower.\n", 2, hour, 2, minut, 2, sekund, 2, requestAutomower[0], 2, requestAutomower[1], 2, requestAutomower[2], 2, requestAutomower[3], 2, requestAutomower[4]);
+    sprintf(temp, "[%0*u:%0*u:%0*u]: Sent data 0x%0*x 0x%0*x 0x%0*x 0x%0*x 0x%0*x to autmower\n", 2, hour, 2, minut, 2, sekund, 2, requestAutomower[0], 2, requestAutomower[1], 2, requestAutomower[2], 2, requestAutomower[3], 2, requestAutomower[4]);
     //DBG_OUTPUT_PORT.printf("%s", temp);
-    _LOG(temp);
-  }  
+  }
+  
+ _LOG(temp);                         // Write to buffer
+ memset(temp, 0, sizeof(temp));      // Reset temp   
 }
 
 ////////////////////////////////
 // WRITE TO LOG
 void writeLog() {
   f = LittleFS.open(logPath, "a");
-  _LOG(f ? "LOG: Open log file.\n" : "LOG: FAILED to open file.\n"); 
+  ///_LOG(f ? "LOG: Open log file.\n" : "LOG: FAILED to open file.\n"); 
   if (f) {
     f.print(logStr);
     f.close();
@@ -803,10 +841,11 @@ void writeLog() {
 void synchTime() {
   unsigned long tCurrent = millis();
   
-  if( tCurrent > tLatestTimeSynch+UPDATE_TIME            // Check if we should synchronize      
+  if( tCurrent > tZero+UPDATE_TIME                       // Check if we should synchronize      
       && tCurrent < (0xFFFFFFFF-(UPDATE_TIME-1)) ) {     // internal clock with autmower. Deal with wrap-around also...
         
-        _LOG("Time to synchronize time\n");
+        _LOG("Starting to synchronize time\n");
+        setTime();
       }
   
 }
@@ -816,6 +855,9 @@ void synchTime() {
 void setTime() {
   _LOG("Trying to get time.\n");
   RCV_PORT.setTimeout(1000);                        // Increase timeout during this.
+
+  sendReq(commands.R_SEKUNDE, sizeof(commands.R_SEKUNDE));
+  seconds = getResp();
 
   sendReq(commands.R_STUNDE, sizeof(commands.R_STUNDE));
   hour = getResp();
@@ -847,7 +889,7 @@ void setupUART() {
     RCV_PORT.read();
   }
   
-  _LOG("Setup UART.\n");
+  _LOG("Setup UART done\n");
   setTime();
 }
 
@@ -982,7 +1024,6 @@ void startOTA() { // Start the OTA service
   ArduinoOTA.begin();
   DEBUG_PRINTLN("OTA ready\r\n");
 }
-
 
 ////////////////////////////////
 // WEBSOCKETS
