@@ -64,8 +64,8 @@ const char *ssid_pass_ap3 = "Fgh";
 #define LOG_ENABLE
 #ifdef LOG_ENABLE
   #define _LOG(a) strcat(logStr, a)
-  //#define _LOG(a) strcat(strcat(logStr, "\n"), a)
-  //#define _LOG(a) memset(tempStr, 0, sizeof tempStr); strcat(tempStr, a); strcat(tempStr, "\n"); strcat(logStr, tempStr);
+  //#define _LOG(a) strcat(strcat(logStr, "\r"), a)
+  //#define _LOG(a) memset(tempStr, 0, sizeof tempStr); strcat(tempStr, a); strcat(tempStr, "\r"); strcat(logStr, tempStr);
 #else
   #define _LOG(a)
 #endif
@@ -97,9 +97,6 @@ const char *ssid = STASSID;
 const char *password = STAPSK;
 
 unsigned long tSendCmd = 0;           // millis() for latest request.
-//unsigned long tLatestTimeSynch = 0;   // millis()   
-unsigned long tZero=0;                // millis() at sync.
-int8_t hour=-1, minute=-1, seconds=-1;// time at sync
 
 // The neatest way to access variables stored in EEPROM is using a structure
 struct saveStruct {
@@ -136,6 +133,35 @@ static bool fsOK;
 static const char TEXT_PLAIN[] PROGMEM = "text/plain";
 static const char FS_INIT_ERROR[] PROGMEM = "FS INIT ERROR";
 static const char FILE_NOT_FOUND[] PROGMEM = "FileNotFound";
+
+// Data structures
+
+// Generic struct for data
+// Can hold two bytes of data
+// and time for latest update.
+struct genDataStruct {
+  unsigned long t;
+  int32_t data = -1;
+} ;
+
+// Time struct
+// Holds latest time and what value internal clock ( millis() )
+// was latest synched at.
+struct mowTime {
+  unsigned long t = 0;
+  int8_t hour = -1;
+  int8_t minute = -1;
+  int8_t seconds = -1;
+} ;
+
+// Mower status as known
+struct mowDataStruct {
+  mowTime mowClock;
+  genDataStruct stat;
+  genDataStruct actCutTime;
+  genDataStruct actMode;
+} mow;
+
 
 struct allcommands {
   uint8_t R_STATUS[5] = {0xf,0x1,0xf1,0x0,0x0};
@@ -630,7 +656,7 @@ void setup(void) {
   // INIT
   pinMode(LED_BLUE, OUTPUT);    // the pins with LEDs connected are outputs
   digitalWrite(LED_BLUE, LOW);  // LED ON
-  _LOG("Starting...\n");
+  _LOG("Starting...\r");
   
   ////////////////////////////////
   setupUART();
@@ -645,7 +671,7 @@ void setup(void) {
 
   //
   digitalWrite(LED_BLUE, HIGH); // LED OFF
-  _LOG("Start completed.\n");
+  _LOG("Start completed.\r");
 }
 
 ////////////////////////////////
@@ -664,21 +690,21 @@ void loop(void) {
 void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t lenght) { // When a WebSocket message is received
   switch (type) {
     case WStype_DISCONNECTED:             // if the websocket is disconnected
-      DBG_OUTPUT_PORT.printf("[%u] Disconnected!\n", num);
+      DBG_OUTPUT_PORT.printf("[%u] Disconnected!\r", num);
       break;
     case WStype_CONNECTED: {              // if a new websocket connection is established
         num_websock = num; // Set global
         IPAddress ip = webSocket.remoteIP(num);
-        DBG_OUTPUT_PORT.printf("[%u] Connected from %d.%d.%d.%d url: %s\n", num, ip[0], ip[1], ip[2], ip[3], payload);
+        DBG_OUTPUT_PORT.printf("[%u] Connected from %d.%d.%d.%d url: %s\r", num, ip[0], ip[1], ip[2], ip[3], payload);
         String sendStr = "timer:" + String(eepromVar1.timerManMode, DEC);
         webSocket.sendTXT(num, sendStr);
       }
       break;
     case WStype_TEXT:                     // if new text data is received
-      DBG_OUTPUT_PORT.printf("[%u] get Text: %s\n", num, payload);
+      DBG_OUTPUT_PORT.printf("[%u] get Text: %s\r", num, payload);
         if ( !memcmp(payload, "save", 4) ) {                      // save data to EEPROM
           eepromVar1.timerManMode = (uint16_t) strtol((const char *) &payload[4], NULL, 10);   // decode timerManMode data
-          DBG_OUTPUT_PORT.printf("Timer Received: %d\n", eepromVar1.timerManMode);
+          DBG_OUTPUT_PORT.printf("Timer Received: %d\r", eepromVar1.timerManMode);
           EEPROM.put(0, eepromVar1);
           bool ok = EEPROM.commit();
           DEBUG_PRINTLN((ok) ? "Save OK" : "Commit failed");
@@ -699,7 +725,7 @@ int sendReq( uint8_t *request, int len ) {
   uint8_t *ptr;
   ptr = request; 
 
-  DBG_OUTPUT_PORT.printf("[Insert time here]: Len %d Sent data 0x%0*x 0x%0*x 0x%0*x 0x%0*x 0x%0*x to autmower.\n", len, 2, request[0], 2, request[1], 2, request[2], 2, request[3], 2, request[4]);
+  DBG_OUTPUT_PORT.printf("[Insert time here]: Len %d Sent data 0x%0*x 0x%0*x 0x%0*x 0x%0*x 0x%0*x to autmower.\r", len, 2, request[0], 2, request[1], 2, request[2], 2, request[3], 2, request[4]);
 
   if ( len > 5 || len < 5 ) {
     return 1; // Error
@@ -717,7 +743,7 @@ int sendReq( uint8_t *request, int len ) {
 //  //ptr = request;
 //  int len = sizeof(fifoReq.n);
 //  
-//  DBG_OUTPUT_PORT.printf("[Insert time here]: Len %d Sent data 0x%0*x 0x%0*x 0x%0*x 0x%0*x 0x%0*x to autmower.\n", len, 2, request->data[0], 2, request->data[1], 2, request->data[2], 2, request->data[3], 2, request->data[4]);
+//  DBG_OUTPUT_PORT.printf("[Insert time here]: Len %d Sent data 0x%0*x 0x%0*x 0x%0*x 0x%0*x 0x%0*x to autmower.\r", len, 2, request->data[0], 2, request->data[1], 2, request->data[2], 2, request->data[3], 2, request->data[4]);
 //
 //  if ( len > 5 || len < 5 ) {
 //    return 1; // Error
@@ -730,27 +756,73 @@ int sendReq( uint8_t *request, int len ) {
 //}
 
 ////////////////////////////////
-// GET RESPONSE
+// GET TIME RESPONSE
 int getResp(){
   uint8_t recvAutomower[6] = "";
   uint8_t *ptr;
   ptr = recvAutomower;
   
   int n = RCV_PORT.readBytes(recvAutomower, 5);
-  if ( n > 5 ) _LOG("Found more >= 5 bytes in buffer.\n");
-  writeToLogBuffer(LOG_READ_BYTES, n, ptr);       // Write received bytes to log buffer
-
-
+  DBG_OUTPUT_PORT.printf("n: %u\r", n);
+  if ( n > 5 ) _LOG("Found more >= 5 bytes in buffer.\r");
+  checkResp(ptr, n, millis());
+  if ( n > 0 ) {
+    writeToLogBuffer(LOG_READ_BYTES, n, ptr);       // Write received bytes to log buffer
+  } else {
+    _LOG("No response received.");
+  }
+  
   // Just for debugging
-  int process = 10;
-  return process;
+  //int process = 10;
+  return 0;
 }
 
+
+// Quick and dirty to get it functioning.
+int nglob = 0, timerStarted = 0;
+unsigned long tTimerZero = 0;
 ////////////////////////////////
 // SEND REQUESTS
 void sendCmd() {
-  sendReq( commands.R_STATUS, 5 );
-  //DBG_OUTPUT_PORT.printf("Serial mem ready for write: %u millis: %u\n", Serial.availableForWrite(), millis());
+  unsigned long timLocal = millis()-tTimerZero;
+  int maxCutTime = eepromVar1.timerManMode;
+  
+  DBG_OUTPUT_PORT.printf("Mow status %u, eepromTimer: %u, timerStarted %u, cutTime %u, intTimer: %lu \r", mow.stat.data, maxCutTime, timerStarted, mow.actCutTime.data, timLocal);
+  if ( mow.stat.data == -1 ) {
+    _LOG("No response from mower. Skipping mow check.\r\n");
+  } else if ( mow.stat.data == 1014 && millis()-mow.stat.t < 60*1000 ) {        // Charging
+    timerStarted = 0;
+  } else if ( mow.stat.data == 1002 
+              && millis()-mow.stat.t < 60*1000 
+              && mow.actCutTime.data > 1 
+              && millis()-mow.actCutTime.t < 60*1000 
+              && timerStarted < 3 ) {                                  // Mowing for more than one minute
+    _LOG("Setting mower in manual mode.\r\n");
+    DBG_OUTPUT_PORT.printf("Setting mower in manual mode.\r");
+    sendReq( commands.W_MODE_MAN, 5 );
+    tTimerZero = millis();
+    timerStarted++;
+  } else if ( ((mow.actCutTime.data > maxCutTime           // Must have started mowing before quitting
+              && millis()-mow.actCutTime.t < 60*1000) 
+              || millis()-tTimerZero > maxCutTime*60*1000)
+              && timerStarted != 0) {
+    _LOG("Max cut time reached. Setting mower in AUTO mode.\r\n");            
+    DBG_OUTPUT_PORT.print("Max cut time reached. Setting mower in AUTO mode.\r");
+    if( timerStarted < 6 ) {  // Only send three times. ( If theres something wrong will spam every 10second )
+      sendReq( commands.W_MODE_AUTO, 5 );
+      timerStarted++;
+    }
+  }
+  
+  if ( nglob == 0 ) {
+    sendReq( commands.R_STATUS, 5 );
+  } else if ( nglob == 1 ) {
+    sendReq( commands.R_MAEHZEIT, 5 );
+  } else if ( nglob == 2 ) {
+    sendReq( commands.R_MAEHZEIT, 5 );  
+  }
+
+  //DBG_OUTPUT_PORT.printf("Serial mem ready for write: %u millis: %u\r", Serial.availableForWrite(), millis());
   
   // TODO: Create some switch that reads in a list
   //       then sends the command.
@@ -762,6 +834,9 @@ void sendCmd() {
  // writeToLogBuffer(LOG_SEND_BYTES, 0, ptr);
   
   synchTime(); // Check if its time to synch internal clock with autmower
+  
+  nglob++;
+  nglob = ( nglob > 1 ) ? 0 : nglob;
 }
 
 ////////////////////////////////
@@ -773,29 +848,84 @@ void readBuf() {
   uint8_t *ptr;
   ptr = recvAutomower;
   
-  //DBG_OUTPUT_PORT.printf("tCurrent: %lx, tSendCmd %lx, villkor a: %u, villkor b: %u \n", tCurrent, tSendCmd, (tCurrent > tSendCmd+tWait),(tCurrent < (0xFFFFFFFF-(tWait-1))));
+  //DBG_OUTPUT_PORT.printf("tCurrent: %lx, tSendCmd %lx, villkor a: %u, villkor b: %u \r", tCurrent, tSendCmd, (tCurrent > tSendCmd+tWait),(tCurrent < (0xFFFFFFFF-(tWait-1))));
   if ( tCurrent > tSendCmd+tWait                  // Give some time for autmower to answer our request.
        && tCurrent < (0xFFFFFFFF-(tWait-1)) ) {   // Deal with wrap around
-    while (RCV_PORT.available() > 0) {            // Ready data in 5 bytes chunks.
+    while (RCV_PORT.available() > 0) {            // Read data in 5 bytes chunks.
         int n = RCV_PORT.readBytes(recvAutomower, 5);
-        if ( n > 5 ) _LOG("[Insert time here]: Found more >= 5 bytes in buffer.\n");  
+        if ( n > 5 ) _LOG("[Insert time here]: Found more >= 5 bytes in buffer.\r");
         writeToLogBuffer(LOG_READ_BYTES, n, ptr);        // Write received bytes to log buffer
-        checkResp(ptr);                        // Process response
+        if ( n == 5) checkResp(ptr, n, tCurrent);        // Process response
         memset(recvAutomower, 0, sizeof(recvAutomower)); // Set all to 0.
+
     }
   }
 }
 
 ////////////////////////////////
+// First byte should always be 0x0f omitting that
+#define STATUS 0x01f1
+#define READSECONDS 0x36b1
+#define READMINUTE 0x36b3
+#define READHOUR 0x36b5
+#define CURRENTMOWINGTIME 0x0038
+////////////////////////////////
 // Check data and update global variables
-void checkResp(uint8_t *data) {
-  DBG_OUTPUT_PORT.printf("checkResp 0x%0*x 0x%0*x 0x%0*x 0x%0*x 0x%0*x to autmower\n", data[0], 2, data[1], 2, data[2], 2, data[3], 2, data[4]);
+int checkResp(uint8_t *data, uint8_t len, unsigned long t) {
   
+  DBG_OUTPUT_PORT.printf("checkResp 0x%0*x 0x%0*x 0x%0*x 0x%0*x 0x%0*x to autmower\r", 2, data[0], 2, data[1], 2, data[2], 2, data[3], 2, data[4]);
+
+  if(data[0] != 0x0f || len != 5){
+    DBG_OUTPUT_PORT.println("Unexpected data at first byte in response or incorrect length.\r");
+    return 1;
+  }
+  
+  unsigned int respData = data[3] << 8 | data[4];
+  unsigned int respCode = data[1] << 8 | data[2];
+  
+  DBG_OUTPUT_PORT.printf("respData: %u, respCode: %u\r", respData, respCode);
+  
+  switch(respCode) {
+    case STATUS:
+      DBG_OUTPUT_PORT.printf("Status: %u.\r", respData);
+      if(respData > 1073){
+        _LOG("Incorrect status value received.\r\n");
+        return 1;
+      } else {
+      mow.stat.t = t;
+      mow.stat.data = respData;
+      }
+      break;
+
+    case CURRENTMOWINGTIME:
+      DBG_OUTPUT_PORT.printf("Current mowing time: %u.\r", respData);
+      mow.actCutTime.t = t;
+      mow.actCutTime.data = respData;
+      break;
+
+    case READSECONDS:
+      DBG_OUTPUT_PORT.printf("Seconds: %u.\r", respData);
+      mow.mowClock.t = t;
+      mow.mowClock.seconds = respData;
+      break;
+
+    case READMINUTE:
+      DBG_OUTPUT_PORT.printf("Minute: %u.\r", respData);
+      mow.mowClock.t = t;
+      mow.mowClock.minute = respData;
+      break;
+ 
+    case READHOUR:
+      DBG_OUTPUT_PORT.printf("Hour: %u.\r", respData);
+      mow.mowClock.t = t;
+      mow.mowClock.hour = respData;
+      break;     
+  }
 }
 
 ////////////////////////////////
 // WRITE TO LOG BUFFER
-void writeToLogBuffer(uint8_t type, int n, uint8_t *requestAutomower){
+void writeToLogBuffer(uint8_t type, int n, uint8_t *data){
   
   char temp[100] = "", temp1[6] = "";
   int8_t hour=0, minut=0, sekund=0;
@@ -804,18 +934,18 @@ void writeToLogBuffer(uint8_t type, int n, uint8_t *requestAutomower){
   calcTime(&hour, &minut, &sekund);
   
   if( type == LOG_READ_BYTES ) {
-    DBG_OUTPUT_PORT.printf("Read bytes %u\n", n);
+    DBG_OUTPUT_PORT.printf("Read bytes %u\r", n);
     sprintf(temp, "[%0*u:%0*u:%0*u]: Incoming data %i bytes ", 2, hour, 2, minut, 2, sekund, n);
     
     for (int i=0; i < n; i++) {
-      sprintf(temp1, "0x%x ", statusAutomower[i]);
+      sprintf(temp1, "0x%x ", data[i]);
       strcat(temp, temp1);
       memset(temp1, 0, sizeof(temp1));   // Reset temp1
     }
-    strcat(temp, "\n");
+    strcat(temp, "\r");
 
   } else if ( type == LOG_SEND_BYTES ) {
-    sprintf(temp, "[%0*u:%0*u:%0*u]: Sent data 0x%0*x 0x%0*x 0x%0*x 0x%0*x 0x%0*x to autmower\n", 2, hour, 2, minut, 2, sekund, 2, requestAutomower[0], 2, requestAutomower[1], 2, requestAutomower[2], 2, requestAutomower[3], 2, requestAutomower[4]);
+    sprintf(temp, "[%0*u:%0*u:%0*u]: Sent data 0x%0*x 0x%0*x 0x%0*x 0x%0*x 0x%0*x to autmower\r", 2, hour, 2, minut, 2, sekund, 2, data[0], 2, data[1], 2, data[2], 2, data[3], 2, data[4]);
     //DBG_OUTPUT_PORT.printf("%s", temp);
   }
   
@@ -823,17 +953,57 @@ void writeToLogBuffer(uint8_t type, int n, uint8_t *requestAutomower){
  memset(temp, 0, sizeof(temp));      // Reset temp   
 }
 
+int nFile=0; // Incrementing number
 ////////////////////////////////
 // WRITE TO LOG
 void writeLog() {
+  int res = 0;
+  char newName[30] = "";
+  size_t fileSize = 0;
+  
+  // Rename log file
+  res = LittleFS.exists(logPath);
+  if( res ) { 
+    Dir dir = LittleFS.openDir("logs");
+    while( dir.fileName() != "logfile.txt" ) { 
+      dir.next(); 
+    }
+    fileSize = dir.fileSize();
+  }
+  
+  DBG_OUTPUT_PORT.printf("Filesize: %zu, nFile: %u\r", fileSize, nFile);
+  
+  if ( fileSize > 1024*1024 ) { // Filesize bigger than 300KiB, rename and save.
+    _LOG("Logfile big. Renaming...");
+    sprintf(newName, "/logs/%u-logfile.txt", nFile);
+    res = LittleFS.rename(logPath, newName);
+    DBG_OUTPUT_PORT.printf("rename result: %u\r", res);
+    if ( !res ) {
+      res = LittleFS.remove(newName);
+      DBG_OUTPUT_PORT.printf("rem aft ren fail: %u\r", res);
+      res = LittleFS.rename(logPath, newName);
+      DBG_OUTPUT_PORT.printf("rename aft ren fail: %u\r", res);
+    }
+    
+    nFile++;
+    nFile = (nFile > 19) ? 0 : nFile; // Write over old log files.
+  }
+
+  // Open and write
+  res = LittleFS.exists(logPath);
+  DBG_OUTPUT_PORT.printf("log file exists result: %u\r", res);
+  //if ( !res ) LittleFS.
+  
   f = LittleFS.open(logPath, "a");
-  ///_LOG(f ? "LOG: Open log file.\n" : "LOG: FAILED to open file.\n"); 
+  ///_LOG(f ? "LOG: Open log file.\r" : "LOG: FAILED to open file.\r"); 
   if (f) {
     f.print(logStr);
     f.close();
     memset(logStr, 0, sizeof(logStr));
+  } else if ( !f ) {
+    DBG_OUTPUT_PORT.printf("fail to open log file\r");
   }
-  //DBG_OUTPUT_PORT.printf("logStr size: %u, : %s", sizeof(logStr), logStr);
+  //DBG_OUTPUT_PORT.printf("logStr size: %u, : %s \r", sizeof(logStr), logStr);
 }
 
 ////////////////////////////////
@@ -841,10 +1011,10 @@ void writeLog() {
 void synchTime() {
   unsigned long tCurrent = millis();
   
-  if( tCurrent > tZero+UPDATE_TIME                       // Check if we should synchronize      
+  if( tCurrent > mow.mowClock.t+UPDATE_TIME                       // Check if we should synchronize      
       && tCurrent < (0xFFFFFFFF-(UPDATE_TIME-1)) ) {     // internal clock with autmower. Deal with wrap-around also...
         
-        _LOG("Starting to synchronize time\n");
+        _LOG("Starting to synchronize time\r");
         setTime();
       }
   
@@ -853,20 +1023,20 @@ void synchTime() {
 ////////////////////////////////////////////
 // Set internal clock from automower clock.
 void setTime() {
-  _LOG("Trying to get time.\n");
+  _LOG("Trying to get time.\r");
   RCV_PORT.setTimeout(1000);                        // Increase timeout during this.
 
   sendReq(commands.R_SEKUNDE, sizeof(commands.R_SEKUNDE));
-  seconds = getResp();
+  getResp();
 
   sendReq(commands.R_STUNDE, sizeof(commands.R_STUNDE));
-  hour = getResp();
+  getResp();
 
   sendReq(commands.R_MINUTE, sizeof(commands.R_MINUTE));
-  minute = getResp();
+  getResp();
 
   sendReq(commands.R_SEKUNDE, sizeof(commands.R_SEKUNDE));
-  seconds = getResp();
+  getResp();
     
   RCV_PORT.setTimeout(1);                           // Timeout after 1 millisecond of waiting for data. Only when using Serial.readBytes() functions.
 }
@@ -889,17 +1059,27 @@ void setupUART() {
     RCV_PORT.read();
   }
   
-  _LOG("Setup UART done\n");
-  setTime();
+  _LOG("Setup UART done\r");
 }
 
 ////////////////////////////////
 // Tasks
 void startTasks() {
+  // Wait 10 seconds for mower to start
+  while( millis() < 10*1000 ) {
+    delay(10);
+  }
+  setTime();
   sendCommand.attach(10, sendCmd);    // Task that sends commands periodically.
   readBuffer.attach(0.25, readBuf);   // Takes care of data in serial buffer
   wrteLog.attach(10, writeLog);       // Write to log file
   //getTime.attach(5, synchTime);         // Check if we should synchronize clock
+}
+
+void stopTasks() {
+  sendCommand.detach();    // Task that sends commands periodically.
+  readBuffer.detach();   // Takes care of data in serial buffer
+  wrteLog.detach();       // Write to log file
 }
 
 ////////////////////////////////
@@ -949,7 +1129,7 @@ void startLittleFS() {
     size_t fileSize = dir.fileSize();
     DBG_OUTPUT_PORT.printf("\tFS File: %s, size: %s\r\n", fileName.c_str(), formatBytes(fileSize).c_str());
   }
-  DBG_OUTPUT_PORT.printf("\n");
+  DBG_OUTPUT_PORT.printf("\r");
 }
 
 ////////////////////////////////
@@ -1004,6 +1184,7 @@ void startOTA() { // Start the OTA service
   //ArduinoOTA.setPassword(OTAPassword);
 
   ArduinoOTA.onStart([]() {
+    stopTasks();
     DEBUG_PRINTLN("Start");
     digitalWrite(LED_BLUE, 1); // turn off the LEDs
   });
@@ -1054,30 +1235,30 @@ void loadEEPROM() {
     DEBUG_PRINTLN((ok) ? "Commit OK" : "Commit failed");
     EEPROM.get(0, eepromVar1);
   }
-  Serial.printf("Readback data: %u\n", eepromVar1.timerManMode);
+  Serial.printf("Readback data: %u\r", eepromVar1.timerManMode);
 }
 
 ////////////////////////////////
 // HELPER FUNCTIONS
 void calcTime(int8_t *hour, int8_t *minut, int8_t *sekunder) {
   // TODO: Fix wrap around.
-  unsigned long diff = (millis() - tZero) / 1000;
+  unsigned long diff = (millis() - mow.mowClock.t) / 1000;
 
   *hour = diff / 3600;
   *minut = (diff-*hour*3600) / 60;
   *sekunder = (diff-*hour*3600-*minut*60);
 
-  //DBG_OUTPUT_PORT.printf("Time: %u:%u:%u\n", *hour, *minut, *sekunder);
+  //DBG_OUTPUT_PORT.printf("Time: %u:%u:%u\r", *hour, *minut, *sekunder);
 }
 
 void prinScanResult(int networksFound)
 {
   char tmp[200] = "", num[20] = "";
   
-  DBG_OUTPUT_PORT.printf("%d network(s) found\n", networksFound);
+  DBG_OUTPUT_PORT.printf("%d network(s) found\r", networksFound);
   for (int i = 0; i < networksFound; i++)
   {
-    DBG_OUTPUT_PORT.printf("%d: %s, Ch:%d (%ddBm) %s\n", i + 1, WiFi.SSID(i).c_str(), WiFi.channel(i), WiFi.RSSI(i), WiFi.encryptionType(i) == ENC_TYPE_NONE ? "open" : "");
+    DBG_OUTPUT_PORT.printf("%d: %s, Ch:%d (%ddBm) %s\r", i + 1, WiFi.SSID(i).c_str(), WiFi.channel(i), WiFi.RSSI(i), WiFi.encryptionType(i) == ENC_TYPE_NONE ? "open" : "");
     (i>=0 && i<20) ? sprintf(num, "%d;", i) : sprintf(num, "-1;", 2); // Store in num
     strcat(tmp, num);
     memset(num, 0, sizeof num); // Clear
