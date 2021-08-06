@@ -3,9 +3,9 @@
 <head>
     <title>Automower setup</title>
     <link href='main.css' rel='stylesheet' type='text/css'>
-    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon-180x180.png">
-    <link rel="icon" type="image/png" sizes="144x144"  href="/favicon-144x144.png">
-    <link rel="icon" type="image/png" sizes="48x48" href="/favicon.ico">
+    <!-- <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon-180x180.png"> -->
+    <link rel="icon" type="image/png" sizes="144x144"  href="favicon-144x144.png">
+    <link rel="icon" type="image/png" sizes="48x48" href="favicon.ico">
     <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#00878f">
     <meta content='width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0' name='viewport'>
@@ -27,7 +27,10 @@
                 </tr>
             </table>
             <p style="margin:8px 0px"><button id="saveEEPROM" class="button" style="background-color:#999" onclick="saveEEPROM();">Save</button></p>
+            <p style="margin:8px 0px"><button id="search" class="button" style="background-color:#999" onclick="search();">Search</button></p>
+	    <p style="margin:8px 0px"><button id="restart" class="button" style="background-color:#999" onclick="restart();">Restart</button></p>
         </div>
+        <div><a href="./edit/">File manager</a></div>
     </center>
 </body>
 </html>

@@ -3,13 +3,15 @@
   AUTOMOWER - A automower addon for your 2nd generation automower.
   Designed to make use of your new battery in a better way.
 
-  Serial 0 (pin labeled rx) - RX port for receiving data.
-  Serial 1 (pin labeled 14) - TX port for sending data.
+  In Arduino set up Lolin (Wemos) D1 mini pro as board to get correct pin definitions.
+  
+  Serial 0 (pin labeled RX) - RX port for receiving data.
+  Serial 1 (pin labeled D4) - TX port for sending data.
   
   Connections
   D1 Mini Pro     ->      Robotic lawnmower
-  Rx              ->      Tx
-  14              ->      Rx
+  RX              ->      Tx
+  D4              ->      Rx
   3v3             ->      3v3
   GND             ->      GND
 
@@ -48,18 +50,35 @@
 #include <WebSocketsServer.h>
 #include <ESP_EEPROM.h>
 #include <Ticker.h>
+//#include <SoftwareSerial.h>
+//#include <ESP8266HTTPUpdateServer.h>
+
+// RTC MEMORY
+extern "C" {
+#include "user_interface.h"
+}
+
+typedef struct {
+  uint8_t count;
+} rtcStore;
+
+rtcStore rtcMem;
+
+#define RTCMEMORYSTART 65
+#define MAXHOUR 5 // number of hours to deep sleep for
 
 ////////////////////////////////
 //  SETUP             
                                           // Will start a accespoint (AP) when not connected to a Wi-Fi.
 #define STASSID "automowerSETUP"          // AP Name
 #define STAPSK  "automower"               // AP Password (NOT USED NOW, no password)
+const char* host = "am-update";           // HTTP update hostname
 const char *ssid_ap1 = "Printerzone";
 const char *ssid_pass_ap1 = "zmoddans";
-const char *ssid_ap2 = "Adb";
-const char *ssid_pass_ap2 = "Fda";
-const char *ssid_ap3 = "Cde";
-const char *ssid_pass_ap3 = "Fgh";
+const char *ssid_ap2 = "dd-wrt";
+const char *ssid_pass_ap2 = "Robertsson145";
+const char *ssid_ap3 = "dd-wrt_RPT";
+const char *ssid_pass_ap3 = "Robertsson145";
 
 #define LOG_ENABLE
 #ifdef LOG_ENABLE
@@ -69,6 +88,9 @@ const char *ssid_pass_ap3 = "Fgh";
 #else
   #define _LOG(a)
 #endif
+
+// Sw Serial
+//SoftwareSerial swSer1;
 
 // Set send and receive serial port.
 #define SEND_PORT Serial1
@@ -115,6 +137,7 @@ Ticker sendCommand, readBuffer, wrteLog, getTime; // Tasks
 ESP8266WiFiMulti wifiMulti;             // Create an instance of the ESP8266WiFiMulti class, called 'wifiMulti'
 ESP8266WebServer server(80);            // create a instance of webserver on port 80
 WebSocketsServer webSocket(81);         // create a websocket server on port 81
+//ESP8266HTTPUpdateServer httpUpdater;    // http update server
 
 uint8_t num_websock = 0; // IP to send WIFI-scan to over websocket
 
@@ -123,8 +146,8 @@ File uploadFile;                        // Global file handle
 File f;                                 
 
 // Statics
-#define UPDATE_TIME 24*3600*1000        // How often should we update the time (seconds)
-#define LED_BLUE 2                      // specify the pin with LED
+#define UPDATE_TIME 24*3600*1000        // How often should we update the time in milliseconds
+#define LED_BLUE 2                      // shared with Serial1 Tx specify the pin with LED
 
 #define LOG_READ_BYTES 0                // Constans to call writeToLogBuffer
 #define LOG_SEND_BYTES 1                    
@@ -171,7 +194,7 @@ struct allcommands {
   uint8_t R_TAG[5] = {0xf,0x36,0xb7,0x0,0x0};
   uint8_t R_MONAT[5] = {0xf,0x36,0xb9,0x0,0x0};
   uint8_t R_JAHR[5] = {0xf,0x36,0xbd,0x0,0x0};
-  uint8_t R_TIMERSTATUS[5] = {0xf,0x4a,0x4e,0x0,0x0};
+  uint8_t R_TIMERSTATUS[5l] = {0xf,0x4a,0x4e,0x0,0x0};
   uint8_t R_WOCHEN_TIMER1_START_STD[5] = {0xf,0x4a,0x38,0x0,0x0};
   uint8_t R_WOCHEN_TIMER1_START_MIN[5] = {0xf,0x4a,0x39,0x0,0x0};
   uint8_t R_WOCHEN_TIMER1_STOP_STD[5] = {0xf,0x4a,0x3a,0x0,0x0};
@@ -245,6 +268,29 @@ struct fifo {
   msgStruct msg[10];
   uint8_t n = 0;      // How many items
 } fifoReq;
+
+///////////////////
+void readFromRTCMemory() {
+  system_rtc_mem_read(RTCMEMORYSTART, &rtcMem, sizeof(rtcMem));
+
+  DEBUG_PRINT("count = ");
+  DEBUG_PRINTLN(rtcMem.count);
+  yield();
+}
+
+void writeToRTCMemory() {
+  if (rtcMem.count <= MAXHOUR) {
+    rtcMem.count++;
+  } else {
+    rtcMem.count = 0;
+  }
+
+  system_rtc_mem_write(RTCMEMORYSTART, &rtcMem, 4);
+
+  DEBUG_PRINT("count = ");
+  DEBUG_PRINTLN(rtcMem.count);
+  yield();
+}
 
 ////////////////////////////////
 // Utils to return HTTP codes, and determine content-type
@@ -654,9 +700,38 @@ void handleGetEdit() {
 void setup(void) {
   ////////////////////////////////
   // INIT
-  pinMode(LED_BLUE, OUTPUT);    // the pins with LEDs connected are outputs
-  digitalWrite(LED_BLUE, LOW);  // LED ON
+  //pinMode(LED_BLUE, OUTPUT);    // the pins with LEDs connected are outputs
+  //digitalWrite(LED_BLUE, LOW);  // LED ON
   _LOG("Starting...\r");
+
+  //SEND_PORT.begin(9600); 
+//  pinMode(D5, OUTPUT); 
+ // while( true ){
+//    digitalWrite(D5, HIGH);
+//    digitalWrite(LED_BLUE, LOW);
+//    delay(500);
+//    digitalWrite(D5, LOW);
+//    digitalWrite(LED_BLUE, HIGH);
+//    delay(500);  
+  //SEND_PORT.println("a");
+  //delay(500);
+  //}
+  
+  /// RTC MEMORY TEST
+//  Serial.begin(9600);
+//  DEBUG_PRINTLN("Reading ");
+//  readFromRTCMemory();
+//  DEBUG_PRINT("Writing ");
+//  writeToRTCMemory();
+//
+//  DEBUG_PRINT("Sleeping for 5 seconds. ");
+//  if (rtcMem.count < 5) {
+//    DEBUG_PRINTLN("Will wake up with radio!");
+//    ESP.deepSleep(5000000, WAKE_RFCAL);
+//  } else {
+//    DEBUG_PRINTLN("Will wake up without radio!");
+//    ESP.deepSleep(5000000, WAKE_RF_DISABLED);
+//  }
   
   ////////////////////////////////
   setupUART();
@@ -667,10 +742,13 @@ void setup(void) {
   startWebSocket();            // Start a WebSocket server
   startOTA();                  // Start the OTA service
   startServer();               // Start a HTTP server with a file read handler and an upload handler
+  //httpUpdater.setup(&httpServer);
+  //httpServer.begin();
+  //DEBUG_OUTPUT_PORT.printf("HTTPUpdateServer ready! Open http://%s.local/update in your browser\n", host);
   startTasks();                // Start tasks
 
   //
-  digitalWrite(LED_BLUE, HIGH); // LED OFF
+  //digitalWrite(LED_BLUE, HIGH); // LED OFF
   _LOG("Start completed.\r");
 }
 
@@ -680,6 +758,9 @@ void loop(void) {
   webSocket.loop();                           // constantly check for websocket events
   server.handleClient();                      // run the server
   ArduinoOTA.handle();                        // listen for OTA events
+  //httpServer.handleClient();
+  wifiMulti.run();
+  MDNS.update();
 }
 
 ////////////////////////////////
@@ -690,21 +771,21 @@ void loop(void) {
 void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t lenght) { // When a WebSocket message is received
   switch (type) {
     case WStype_DISCONNECTED:             // if the websocket is disconnected
-      DBG_OUTPUT_PORT.printf("[%u] Disconnected!\r", num);
+      DBG_OUTPUT_PORT.printf("[%u] Disconnected!\r\n", num);
       break;
     case WStype_CONNECTED: {              // if a new websocket connection is established
         num_websock = num; // Set global
         IPAddress ip = webSocket.remoteIP(num);
-        DBG_OUTPUT_PORT.printf("[%u] Connected from %d.%d.%d.%d url: %s\r", num, ip[0], ip[1], ip[2], ip[3], payload);
+        DBG_OUTPUT_PORT.printf("[%u] Connected from %d.%d.%d.%d url: %s\r\n", num, ip[0], ip[1], ip[2], ip[3], payload);
         String sendStr = "timer:" + String(eepromVar1.timerManMode, DEC);
         webSocket.sendTXT(num, sendStr);
       }
       break;
     case WStype_TEXT:                     // if new text data is received
-      DBG_OUTPUT_PORT.printf("[%u] get Text: %s\r", num, payload);
+      DBG_OUTPUT_PORT.printf("[%u] get Text: %s\r\n", num, payload);
         if ( !memcmp(payload, "save", 4) ) {                      // save data to EEPROM
           eepromVar1.timerManMode = (uint16_t) strtol((const char *) &payload[4], NULL, 10);   // decode timerManMode data
-          DBG_OUTPUT_PORT.printf("Timer Received: %d\r", eepromVar1.timerManMode);
+          DBG_OUTPUT_PORT.printf("Timer Received: %d\rn", eepromVar1.timerManMode);
           EEPROM.put(0, eepromVar1);
           bool ok = EEPROM.commit();
           DEBUG_PRINTLN((ok) ? "Save OK" : "Commit failed");
@@ -713,6 +794,10 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t lenght
         } else if ( !memcmp(payload,"scan",4) ) {
           WiFi.scanNetworksAsync(prinScanResult);    // Start search on request
           DEBUG_PRINTLN("Network scan");
+        } else if ( !memcmp(payload,"restart", 7) ) {
+          DEBUG_PRINTLN("Restart request");
+          delay(100);
+          ESP.restart();
         }
       break;
   }
@@ -725,7 +810,7 @@ int sendReq( uint8_t *request, int len ) {
   uint8_t *ptr;
   ptr = request; 
 
-  DBG_OUTPUT_PORT.printf("[Insert time here]: Len %d Sent data 0x%0*x 0x%0*x 0x%0*x 0x%0*x 0x%0*x to autmower.\r", len, 2, request[0], 2, request[1], 2, request[2], 2, request[3], 2, request[4]);
+  DBG_OUTPUT_PORT.printf("[Insert time here]: Len %d Sent data 0x%0*x 0x%0*x 0x%0*x 0x%0*x 0x%0*x to autmower.\r\n", len, 2, request[0], 2, request[1], 2, request[2], 2, request[3], 2, request[4]);
 
   if ( len > 5 || len < 5 ) {
     return 1; // Error
@@ -743,7 +828,7 @@ int sendReq( uint8_t *request, int len ) {
 //  //ptr = request;
 //  int len = sizeof(fifoReq.n);
 //  
-//  DBG_OUTPUT_PORT.printf("[Insert time here]: Len %d Sent data 0x%0*x 0x%0*x 0x%0*x 0x%0*x 0x%0*x to autmower.\r", len, 2, request->data[0], 2, request->data[1], 2, request->data[2], 2, request->data[3], 2, request->data[4]);
+//  DBG_OUTPUT_PORT.printf("[Insert time here]: Len %d Sent data 0x%0*x 0x%0*x 0x%0*x 0x%0*x 0x%0*x to autmower.\r\n", len, 2, request->data[0], 2, request->data[1], 2, request->data[2], 2, request->data[3], 2, request->data[4]);
 //
 //  if ( len > 5 || len < 5 ) {
 //    return 1; // Error
@@ -763,7 +848,7 @@ int getResp(){
   ptr = recvAutomower;
   
   int n = RCV_PORT.readBytes(recvAutomower, 5);
-  DBG_OUTPUT_PORT.printf("n: %u\r", n);
+  DBG_OUTPUT_PORT.printf("n: %u\r\n", n);
   if ( n > 5 ) _LOG("Found more >= 5 bytes in buffer.\r");
   checkResp(ptr, n, millis());
   if ( n > 0 ) {
@@ -787,7 +872,7 @@ void sendCmd() {
   unsigned long timLocal = millis()-tTimerZero;
   int maxCutTime = eepromVar1.timerManMode;
   
-  DBG_OUTPUT_PORT.printf("Mow status %u, eepromTimer: %u, timerStarted %u, cutTime %u, intTimer: %lu \r", mow.stat.data, maxCutTime, timerStarted, mow.actCutTime.data, timLocal);
+  DBG_OUTPUT_PORT.printf("Mow status %u, eepromTimer: %u, timerStarted %u, cutTime %u, intTimer: %lu \r\n", mow.stat.data, maxCutTime, timerStarted, mow.actCutTime.data, timLocal);
   if ( mow.stat.data == -1 ) {
     _LOG("No response from mower. Skipping mow check.\r\n");
   } else if ( mow.stat.data == 1014 && millis()-mow.stat.t < 60*1000 ) {        // Charging
@@ -798,7 +883,7 @@ void sendCmd() {
               && millis()-mow.actCutTime.t < 60*1000 
               && timerStarted < 3 ) {                                  // Mowing for more than one minute
     _LOG("Setting mower in manual mode.\r\n");
-    DBG_OUTPUT_PORT.printf("Setting mower in manual mode.\r");
+    DBG_OUTPUT_PORT.printf("Setting mower in manual mode.\r\n");
     sendReq( commands.W_MODE_MAN, 5 );
     tTimerZero = millis();
     timerStarted++;
@@ -807,7 +892,7 @@ void sendCmd() {
               || millis()-tTimerZero > maxCutTime*60*1000)
               && timerStarted != 0) {
     _LOG("Max cut time reached. Setting mower in AUTO mode.\r\n");            
-    DBG_OUTPUT_PORT.print("Max cut time reached. Setting mower in AUTO mode.\r");
+    DBG_OUTPUT_PORT.print("Max cut time reached. Setting mower in AUTO mode.\r\n");
     if( timerStarted < 6 ) {  // Only send three times. ( If theres something wrong will spam every 10second )
       sendReq( commands.W_MODE_AUTO, 5 );
       timerStarted++;
@@ -822,7 +907,7 @@ void sendCmd() {
     sendReq( commands.R_MAEHZEIT, 5 );  
   }
 
-  //DBG_OUTPUT_PORT.printf("Serial mem ready for write: %u millis: %u\r", Serial.availableForWrite(), millis());
+  //DBG_OUTPUT_PORT.printf("Serial mem ready for write: %u millis: %u\r\n", Serial.availableForWrite(), millis());
   
   // TODO: Create some switch that reads in a list
   //       then sends the command.
@@ -848,7 +933,7 @@ void readBuf() {
   uint8_t *ptr;
   ptr = recvAutomower;
   
-  //DBG_OUTPUT_PORT.printf("tCurrent: %lx, tSendCmd %lx, villkor a: %u, villkor b: %u \r", tCurrent, tSendCmd, (tCurrent > tSendCmd+tWait),(tCurrent < (0xFFFFFFFF-(tWait-1))));
+  //DBG_OUTPUT_PORT.printf("tCurrent: %lx, tSendCmd %lx, villkor a: %u, villkor b: %u \r\n", tCurrent, tSendCmd, (tCurrent > tSendCmd+tWait),(tCurrent < (0xFFFFFFFF-(tWait-1))));
   if ( tCurrent > tSendCmd+tWait                  // Give some time for autmower to answer our request.
        && tCurrent < (0xFFFFFFFF-(tWait-1)) ) {   // Deal with wrap around
     while (RCV_PORT.available() > 0) {            // Read data in 5 bytes chunks.
@@ -873,7 +958,7 @@ void readBuf() {
 // Check data and update global variables
 int checkResp(uint8_t *data, uint8_t len, unsigned long t) {
   
-  DBG_OUTPUT_PORT.printf("checkResp 0x%0*x 0x%0*x 0x%0*x 0x%0*x 0x%0*x to autmower\r", 2, data[0], 2, data[1], 2, data[2], 2, data[3], 2, data[4]);
+  DBG_OUTPUT_PORT.printf("checkResp 0x%0*x 0x%0*x 0x%0*x 0x%0*x 0x%0*x to autmower\r\n", 2, data[0], 2, data[1], 2, data[2], 2, data[3], 2, data[4]);
 
   if(data[0] != 0x0f || len != 5){
     DBG_OUTPUT_PORT.println("Unexpected data at first byte in response or incorrect length.\r");
@@ -883,11 +968,11 @@ int checkResp(uint8_t *data, uint8_t len, unsigned long t) {
   unsigned int respData = data[3] << 8 | data[4];
   unsigned int respCode = data[1] << 8 | data[2];
   
-  DBG_OUTPUT_PORT.printf("respData: %u, respCode: %u\r", respData, respCode);
+  DBG_OUTPUT_PORT.printf("respData: %u, respCode: %u\r\n", respData, respCode);
   
   switch(respCode) {
     case STATUS:
-      DBG_OUTPUT_PORT.printf("Status: %u.\r", respData);
+      DBG_OUTPUT_PORT.printf("Status: %u.\r\n", respData);
       if(respData > 1073){
         _LOG("Incorrect status value received.\r\n");
         return 1;
@@ -898,25 +983,25 @@ int checkResp(uint8_t *data, uint8_t len, unsigned long t) {
       break;
 
     case CURRENTMOWINGTIME:
-      DBG_OUTPUT_PORT.printf("Current mowing time: %u.\r", respData);
+      DBG_OUTPUT_PORT.printf("Current mowing time: %u.\r\n", respData);
       mow.actCutTime.t = t;
       mow.actCutTime.data = respData;
       break;
 
     case READSECONDS:
-      DBG_OUTPUT_PORT.printf("Seconds: %u.\r", respData);
+      DBG_OUTPUT_PORT.printf("Seconds: %u.\r\n", respData);
       mow.mowClock.t = t;
       mow.mowClock.seconds = respData;
       break;
 
     case READMINUTE:
-      DBG_OUTPUT_PORT.printf("Minute: %u.\r", respData);
+      DBG_OUTPUT_PORT.printf("Minute: %u.\r\n", respData);
       mow.mowClock.t = t;
       mow.mowClock.minute = respData;
       break;
  
     case READHOUR:
-      DBG_OUTPUT_PORT.printf("Hour: %u.\r", respData);
+      DBG_OUTPUT_PORT.printf("Hour: %u.\r\n", respData);
       mow.mowClock.t = t;
       mow.mowClock.hour = respData;
       break;     
@@ -934,7 +1019,7 @@ void writeToLogBuffer(uint8_t type, int n, uint8_t *data){
   calcTime(&hour, &minut, &sekund);
   
   if( type == LOG_READ_BYTES ) {
-    DBG_OUTPUT_PORT.printf("Read bytes %u\r", n);
+    DBG_OUTPUT_PORT.printf("Read bytes %u\r\n", n);
     sprintf(temp, "[%0*u:%0*u:%0*u]: Incoming data %i bytes ", 2, hour, 2, minut, 2, sekund, n);
     
     for (int i=0; i < n; i++) {
@@ -971,18 +1056,18 @@ void writeLog() {
     fileSize = dir.fileSize();
   }
   
-  DBG_OUTPUT_PORT.printf("Filesize: %zu, nFile: %u\r", fileSize, nFile);
+  DBG_OUTPUT_PORT.printf("Filesize: %zu, nFile: %u\r\n", fileSize, nFile);
   
   if ( fileSize > 1024*1024 ) { // Filesize bigger than 300KiB, rename and save.
     _LOG("Logfile big. Renaming...");
     sprintf(newName, "/logs/%u-logfile.txt", nFile);
     res = LittleFS.rename(logPath, newName);
-    DBG_OUTPUT_PORT.printf("rename result: %u\r", res);
+    DBG_OUTPUT_PORT.printf("rename result: %u\r\n", res);
     if ( !res ) {
       res = LittleFS.remove(newName);
-      DBG_OUTPUT_PORT.printf("rem aft ren fail: %u\r", res);
+      DBG_OUTPUT_PORT.printf("rem aft ren fail: %u\r\n", res);
       res = LittleFS.rename(logPath, newName);
-      DBG_OUTPUT_PORT.printf("rename aft ren fail: %u\r", res);
+      DBG_OUTPUT_PORT.printf("rename aft ren fail: %u\r\n", res);
     }
     
     nFile++;
@@ -991,7 +1076,7 @@ void writeLog() {
 
   // Open and write
   res = LittleFS.exists(logPath);
-  DBG_OUTPUT_PORT.printf("log file exists result: %u\r", res);
+  //DBG_OUTPUT_PORT.printf("log file exists result: %u\r\n", res);
   //if ( !res ) LittleFS.
   
   f = LittleFS.open(logPath, "a");
@@ -1001,9 +1086,9 @@ void writeLog() {
     f.close();
     memset(logStr, 0, sizeof(logStr));
   } else if ( !f ) {
-    DBG_OUTPUT_PORT.printf("fail to open log file\r");
+    DBG_OUTPUT_PORT.printf("fail to open log file\r\n");
   }
-  //DBG_OUTPUT_PORT.printf("logStr size: %u, : %s \r", sizeof(logStr), logStr);
+  //DBG_OUTPUT_PORT.printf("logStr size: %u, : %s \r\n", sizeof(logStr), logStr);
 }
 
 ////////////////////////////////
@@ -1047,11 +1132,11 @@ void setTime() {
 ////////////////////////////////
 // UART
 void setupUART() {
-  DBG_OUTPUT_PORT.begin(74880); // Start the Serial communication to send messages to the computer
+  //DBG_OUTPUT_PORT.begin(74880); // Start the Serial communication to send messages to the computer
   delay(10);
   DEBUG_PRINTLN("\r\n");
-  //Serial.begin(9600);         // Listen for mower data on Serial0
-  SEND_PORT.begin(9600);          // Send mower data on Serial1
+  RCV_PORT.begin(9600);             // Listen for mower data on Serial0
+  SEND_PORT.begin(9600);            // Send mower data on Serial1
 
   // Empty all data in receive buffer
   RCV_PORT.setTimeout(1);
@@ -1087,10 +1172,11 @@ void stopTasks() {
 void startWiFi() { // Start a Wi-Fi access point, and try to connect to some given access points. Then wait for either an AP or STA connection
   //WiFi.softAP(ssid, password);             // Start the access point
   WiFi.softAP(ssid);             // Start the access point
+  //WiFi.mode(WIFI_STA);
   
-  DEBUG_PRINT("Access Point \"");
-  DEBUG_PRINT(ssid);
-  DEBUG_PRINTLN("\" started\r\n");
+  //DEBUG_PRINT("Access Point \"");
+  //DEBUG_PRINT(ssid);
+  //DEBUG_PRINTLN("\" started\r\n");
 
   wifiMulti.addAP(ssid_ap1, ssid_pass_ap1);   // add Wi-Fi networks you want to connect to
   wifiMulti.addAP(ssid_ap2, ssid_pass_ap2);
@@ -1127,9 +1213,9 @@ void startLittleFS() {
   while (dir.next()) {                      // List the file system contents
     String fileName = dir.fileName();
     size_t fileSize = dir.fileSize();
-    DBG_OUTPUT_PORT.printf("\tFS File: %s, size: %s\r\n", fileName.c_str(), formatBytes(fileSize).c_str());
+    //DBG_OUTPUT_PORT.printf("\tFS File: %s, size: %s\r", fileName.c_str(), formatBytes(fileSize).c_str());
   }
-  DBG_OUTPUT_PORT.printf("\r");
+  //DBG_OUTPUT_PORT.printf("\r\n");
 }
 
 ////////////////////////////////
@@ -1186,13 +1272,13 @@ void startOTA() { // Start the OTA service
   ArduinoOTA.onStart([]() {
     stopTasks();
     DEBUG_PRINTLN("Start");
-    digitalWrite(LED_BLUE, 1); // turn off the LEDs
+    //digitalWrite(LED_BLUE, 1); // turn off the LEDs
   });
   ArduinoOTA.onEnd([]() {
     DEBUG_PRINTLN("\r\nEnd");
   });
   ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-    DBG_OUTPUT_PORT.printf("Progress: %u%%\r", (progress / (total / 100)));
+    DBG_OUTPUT_PORT.printf("Progress: %u%%\r\n", (progress / (total / 100)));
   });
   ArduinoOTA.onError([](ota_error_t error) {
     DBG_OUTPUT_PORT.printf("Error[%u]: ", error);
@@ -1235,7 +1321,7 @@ void loadEEPROM() {
     DEBUG_PRINTLN((ok) ? "Commit OK" : "Commit failed");
     EEPROM.get(0, eepromVar1);
   }
-  Serial.printf("Readback data: %u\r", eepromVar1.timerManMode);
+  DBG_OUTPUT_PORT.printf("Readback data: %u\r", eepromVar1.timerManMode);
 }
 
 ////////////////////////////////
@@ -1248,17 +1334,17 @@ void calcTime(int8_t *hour, int8_t *minut, int8_t *sekunder) {
   *minut = (diff-*hour*3600) / 60;
   *sekunder = (diff-*hour*3600-*minut*60);
 
-  //DBG_OUTPUT_PORT.printf("Time: %u:%u:%u\r", *hour, *minut, *sekunder);
+  //DBG_OUTPUT_PORT.printf("Time: %u:%u:%u\r\n", *hour, *minut, *sekunder);
 }
 
 void prinScanResult(int networksFound)
 {
   char tmp[200] = "", num[20] = "";
   
-  DBG_OUTPUT_PORT.printf("%d network(s) found\r", networksFound);
+  DBG_OUTPUT_PORT.printf("%d network(s) found\r\n", networksFound);
   for (int i = 0; i < networksFound; i++)
   {
-    DBG_OUTPUT_PORT.printf("%d: %s, Ch:%d (%ddBm) %s\r", i + 1, WiFi.SSID(i).c_str(), WiFi.channel(i), WiFi.RSSI(i), WiFi.encryptionType(i) == ENC_TYPE_NONE ? "open" : "");
+    DBG_OUTPUT_PORT.printf("%d: %s, Ch:%d (%ddBm) %s\r\n", i + 1, WiFi.SSID(i).c_str(), WiFi.channel(i), WiFi.RSSI(i), WiFi.encryptionType(i) == ENC_TYPE_NONE ? "open" : "");
     (i>=0 && i<20) ? sprintf(num, "%d;", i) : sprintf(num, "-1;", 2); // Store in num
     strcat(tmp, num);
     memset(num, 0, sizeof num); // Clear
