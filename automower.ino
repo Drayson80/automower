@@ -3,7 +3,11 @@
   AUTOMOWER - A automower addon for your 2nd generation automower.
   Designed to make use of your new battery in a better way.
 
+  Requirements:
+  Install ESP8266 Core
   In Arduino set up Lolin (Wemos) D1 mini pro as board to get correct pin definitions.
+  ESP_EEPROM by j-watson
+  Websockets by Markus Sattler
   
   Serial 0 (pin labeled RX) - RX port for receiving data.
   Serial 1 (pin labeled D4) - TX port for sending data.
@@ -70,7 +74,7 @@ rtcStore rtcMem;
 ////////////////////////////////
 //  SETUP             
                                           // Will start a accespoint (AP) when not connected to a Wi-Fi.
-#define STASSID "automowerSETUP"          // AP Name
+#define STASSID "amw"          // AP Name
 #define STAPSK  "automower"               // AP Password (NOT USED NOW, no password)
 const char* host = "am-update";           // HTTP update hostname
 const char *ssid_ap1 = "Printerzone";
@@ -112,7 +116,7 @@ const char *ssid_pass_ap3 = "Robertsson145";
 
 ////////////////////////////////
 // GLOBAL and constructors
-const char *OTAName = "automowerOTA";        // A name and a password for the OTA service
+const char *OTAName = "amwOTA";        // A name and a password for the OTA service
 const char *OTAPassword = "automower";
 const char *mdnsName = "automower";       // Domain name for the mDNS responder
 const char *ssid = STASSID;
@@ -149,7 +153,7 @@ File f;
 #define UPDATE_TIME 24*3600*1000        // How often should we update the time in milliseconds
 #define LED_BLUE 2                      // shared with Serial1 Tx specify the pin with LED
 
-#define LOG_READ_BYTES 0                // Constans to call writeToLogBuffer
+#define LOG_READ_BYTES 0                // Constants to call writeToLogBuffer
 #define LOG_SEND_BYTES 1                    
 
 static bool fsOK;
@@ -273,22 +277,17 @@ struct fifo {
 void readFromRTCMemory() {
   system_rtc_mem_read(RTCMEMORYSTART, &rtcMem, sizeof(rtcMem));
 
-  DEBUG_PRINT("count = ");
-  DEBUG_PRINTLN(rtcMem.count);
+  //DEBUG_PRINT("count = ");
+  //DEBUG_PRINTLN(rtcMem.count);
   yield();
 }
 
-void writeToRTCMemory() {
-  if (rtcMem.count <= MAXHOUR) {
-    rtcMem.count++;
-  } else {
-    rtcMem.count = 0;
-  }
+void writeToRTCMemory(uint8_t cnt) {
+  rtcMem.count = cnt;
+  system_rtc_mem_write(RTCMEMORYSTART, &rtcMem, sizeof(rtcMem));
 
-  system_rtc_mem_write(RTCMEMORYSTART, &rtcMem, 4);
-
-  DEBUG_PRINT("count = ");
-  DEBUG_PRINTLN(rtcMem.count);
+  //DEBUG_PRINT("count = ");
+  //DEBUG_PRINTLN(rtcMem.count);
   yield();
 }
 
@@ -722,7 +721,7 @@ void setup(void) {
 //  DEBUG_PRINTLN("Reading ");
 //  readFromRTCMemory();
 //  DEBUG_PRINT("Writing ");
-//  writeToRTCMemory();
+//  writeToRTCMemory(0);
 //
 //  DEBUG_PRINT("Sleeping for 5 seconds. ");
 //  if (rtcMem.count < 5) {
@@ -734,33 +733,70 @@ void setup(void) {
 //  }
   
   ////////////////////////////////
+  readFromRTCMemory();
+  Serial.begin(9600);
+  Serial.println("test");
+
   setupUART();
   loadEEPROM();                // Fetch setup values
-  startLittleFS();             // Start the LittleFS and list all contents
-  startWiFi();                 // Start a Wi-Fi access point, and try to connect to some given access points. Then wait for either an AP or STA connection
-  startMDNS();                 // Start the mDNS responder
-  startWebSocket();            // Start a WebSocket server
-  startOTA();                  // Start the OTA service
-  startServer();               // Start a HTTP server with a file read handler and an upload handler
-  //httpUpdater.setup(&httpServer);
-  //httpServer.begin();
-  //DEBUG_OUTPUT_PORT.printf("HTTPUpdateServer ready! Open http://%s.local/update in your browser\n", host);
-  startTasks();                // Start tasks
-
-  //
-  //digitalWrite(LED_BLUE, HIGH); // LED OFF
+  startLittleFS();             // Start the LittleFS and list all content
+  //Serial.println("HELLO");
+  //DEBUG_PRINT("rtcMem.count: ");
+  //DEBUG_PRINTLN(rtcMem.count);
+  
+  // Coldbooting, charging (make sure to get wifi up and running)
+  if (rtcMem.count != 1) {
+    startWiFi();                 // Start a Wi-Fi access point, and try to connect to some given access points. Then wait for either an AP or STA connection
+    startMDNS();                 // Start the mDNS responder
+    startWebSocket();            // Start a WebSocket server
+    startOTA();                  // Start the OTA service
+    startServer();               // Start a HTTP server with a file read handler and an upload handler
+  }
+  
+  startTasks();
+  
   _LOG("Start completed.\r");
 }
 
+// Status meaning
+#define CHARGING 1014
+#define START_MOWER 1012
+#define MOWING 1002
+#define PINCODE E803
+#define CHASSISOFF 1404 // Removed top chassis
 ////////////////////////////////
 // LOOP
 void loop(void) {
+  if (rtcMem.count != 1) {                    // Cold boot or charging
   webSocket.loop();                           // constantly check for websocket events
   server.handleClient();                      // run the server
   ArduinoOTA.handle();                        // listen for OTA events
   //httpServer.handleClient();
   wifiMulti.run();
   MDNS.update();
+  } else {                                    // Wake from sleep
+    yield();
+  }
+
+  // Check what sleep mode to use
+  if( mow.stat.data == CHARGING 
+      && millis()-mow.stat.t < 60*1000
+      && millis() > 60*10*1000 ) {
+    _LOG("Charging, sleep then wifi on.");
+    DEBUG_PRINT("Sleep then wifi. Chrg > 1 min");
+    writeToRTCMemory(0);   // Enable wifi after sleep
+    ESP.deepSleep(1, WAKE_RFCAL);    
+     
+  } else if ( mow.stat.data == MOWING 
+              && mow.actCutTime.data > 1
+              && millis()-mow.actCutTime.t > 1
+              && millis() > 60*10*1000) {
+    _LOG("Mowing, going to sleep");
+    DEBUG_PRINT("Mowing, going to sleep");
+    writeToRTCMemory(1); 
+    ESP.deepSleep(30*10e6, WAKE_RF_DISABLED);
+  }
+  
 }
 
 ////////////////////////////////
@@ -875,9 +911,9 @@ void sendCmd() {
   DBG_OUTPUT_PORT.printf("Mow status %u, eepromTimer: %u, timerStarted %u, cutTime %u, intTimer: %lu \r\n", mow.stat.data, maxCutTime, timerStarted, mow.actCutTime.data, timLocal);
   if ( mow.stat.data == -1 ) {
     _LOG("No response from mower. Skipping mow check.\r\n");
-  } else if ( mow.stat.data == 1014 && millis()-mow.stat.t < 60*1000 ) {        // Charging
+  } else if ( mow.stat.data == CHARGING && millis()-mow.stat.t < 60*1000 ) {        // Charging
     timerStarted = 0;
-  } else if ( mow.stat.data == 1002 
+  } else if ( mow.stat.data == MOWING 
               && millis()-mow.stat.t < 60*1000 
               && mow.actCutTime.data > 1 
               && millis()-mow.actCutTime.t < 60*1000 
@@ -983,6 +1019,11 @@ int checkResp(uint8_t *data, uint8_t len, unsigned long t) {
       break;
 
     case CURRENTMOWINGTIME:
+      if( respData == 0x3800 ) {
+        DBG_OUTPUT_PORT.printf("Mowing time not set: %u.\r\n", respData);
+        break;
+      }
+      
       DBG_OUTPUT_PORT.printf("Current mowing time: %u.\r\n", respData);
       mow.actCutTime.t = t;
       mow.actCutTime.data = respData;
@@ -1150,9 +1191,9 @@ void setupUART() {
 ////////////////////////////////
 // Tasks
 void startTasks() {
-  // Wait 10 seconds for mower to start
-  while( millis() < 10*1000 ) {
-    delay(10);
+  // Wait 0.5 seconds for mower to start
+  while( millis() < 500 ) {
+    yield();
   }
   setTime();
   sendCommand.attach(10, sendCmd);    // Task that sends commands periodically.
@@ -1170,9 +1211,9 @@ void stopTasks() {
 ////////////////////////////////
 // WIFI
 void startWiFi() { // Start a Wi-Fi access point, and try to connect to some given access points. Then wait for either an AP or STA connection
-  //WiFi.softAP(ssid, password);             // Start the access point
-  WiFi.softAP(ssid);             // Start the access point
-  //WiFi.mode(WIFI_STA);
+  WiFi.softAP(ssid, password);             // Start the access point
+  //WiFi.softAP(ssid);             // Start the access point
+  //WiFi.mode(WIFI_AP_STA);
   
   //DEBUG_PRINT("Access Point \"");
   //DEBUG_PRINT(ssid);
@@ -1267,7 +1308,7 @@ void startServer() {
 // OTA
 void startOTA() { // Start the OTA service
   ArduinoOTA.setHostname(OTAName);
-  //ArduinoOTA.setPassword(OTAPassword);
+  ArduinoOTA.setPassword(OTAPassword);
 
   ArduinoOTA.onStart([]() {
     stopTasks();
