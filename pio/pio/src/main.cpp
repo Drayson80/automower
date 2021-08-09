@@ -33,7 +33,7 @@ void stateChanger(){
       //WiFi.forceSleepWake();
       //delay(1); //Insert code to connect to WiFi, start your servers or clients or whatever
       
-    } else if ( mowState==S_CHARGING 
+    } else if ( (mowState==S_UNKOWN || mowState==S_CHARGING)
                 && mowStateDesired == S_MOWING_NOW ){
       DEBUG_PRINTLN("Switching to manual mode.");
       sendMowReq(commands.W_MODE_MAN, sizeof(commands.W_MODE_MAN));
@@ -66,22 +66,24 @@ void stateChanger(){
   // Run actions in state
   switch(mowState){
     case S_UNKOWN:
+      wifiMulti.run();
       //DBG_OUTPUT_PORT.printf("mowstat: %d\r\n", get_mow_status());
       if ( get_mow_status() == CHARGING ) mowStateDesired = S_CHARGING;
+      //else if ( get_mow_status() == MOWING) mowStateDesired = S_MOWING_NOW;
       break;
 
     case S_CHARGING:
       wifiMulti.run();
-      if ( get_mow_status() == MOWING && get_mow_actCutTime() > 2){
+      if ( get_mow_status() == MOWING 
+           && ((get_mow_actCutTime() > 2) || true)) {
         DEBUG_PRINTLN("stateDesired change to S_MOWING_NOW");
         mowStateDesired = S_MOWING_NOW;
       } 
       break;
 
     case S_MOWING_NOW:
-      if( (unsigned long) (millis()-timMowStart) >= maxMowTime*60*1e3 
-          || (get_mow_actCutTime() > maxMowTime && get_mow_status() == MOWING)
-          || get_mow_status() > 0x1013 ){ // cast for overflow to work
+      if( (unsigned long) (millis()-timMowStart) >= maxMowTime*60*1000 
+          || (get_mow_actCutTime() > maxMowTime && get_mow_status() == MOWING) ){ // cast for overflow to work
         DEBUG_PRINTLN("Mowing cut time end reached.");       
         mowStateDesired = S_STOP_MOWING;
       }
@@ -136,6 +138,7 @@ void loop() {
     Serial.printf("millis: %ld state: %u, mowStateDesired: %u\r\n", millis(), mowState, mowStateDesired);
     delay(1);
   }
+  wifiMulti.run();
   ArduinoOTA.handle();  // listen for OTA events
   //MDNS.update();
 }

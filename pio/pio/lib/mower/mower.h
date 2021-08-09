@@ -6,9 +6,12 @@
 // definitions
 #define CHARGING 0x1014
 #define START_MOWER 0x1012
-#define MOWING 0x1002
+//#define MOWING 0x1002
+#define MOWING 0xEA03 // klipper
 #define PINCODE 0xE803
 #define CHASSISOFF 0x1404 // Removed top chassis
+#define YES_TO_START 0x1c04 // Tryck yes for start
+#define PARK_IN_STATION 0x2004
 
 // First byte should always be 0x0f omitting that
 #define STATUSMOWER 0x01f1
@@ -148,26 +151,15 @@ int processResp(uint8_t *data, uint8_t len, uint32_t t){
   switch(respCode) {
     case STATUSMOWER:
       DBG_OUTPUT_PORT.printf("Status: %u.\r\n", respData);
-      if(respData > 0x1404){
-        DEBUG_PRINT("Fel status.");
-        //_LOG("Incorrect status value received.\r\n");
-        return 1;
-      } else {
       mow.stat.t = t;
       mow.stat.data = respData;
-      }
-      DBG_OUTPUT_PORT.printf("mow.stat.t: %ld\r\n", mow.stat.t);
+      //DBG_OUTPUT_PORT.printf("mow.stat.t: %ld\r\n", mow.stat.t);
       break;
 
     case CURRENTMOWINGTIME:
-      if( respData == 0x3800 ) {
-        DBG_OUTPUT_PORT.printf("Mowing time not set: %u.\r\n", respData);
-        break;
-      }
-      
-      DBG_OUTPUT_PORT.printf("Current mowing time: %u.\r\n", respData);
       mow.actCutTime.t = t;
-      mow.actCutTime.data = respData;
+      mow.actCutTime.data = respData & 0x00ff;
+      DBG_OUTPUT_PORT.printf("Current mowing time: %u.\r\n", mow.actCutTime.data);
       break;
 
     case READSECONDS:
