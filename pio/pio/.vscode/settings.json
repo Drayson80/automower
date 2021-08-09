@@ -1,0 +1,28 @@
+{
+  "files.associations": {
+    "user_interface.h": "c",
+    "esp8266wifimulti.h": "c",
+    "esp8266wifi.h": "c",
+    "ticker.h": "c",
+    "functional": "c",
+    "schedule.h": "c",
+    "arduinoota.h": "c",
+    "softwareserial.h": "c",
+    "array": "cpp",
+    "string": "cpp",
+    "string_view": "cpp",
+    "ranges": "cpp",
+    "esp8266wifiap.h": "c",
+    "esp8266wifitype.h": "c",
+    "ipaddress.h": "c",
+    "wl_definitions.h": "c",
+    "esp8266wifista.h": "c",
+    "esp8266wifigeneric.h": "c",
+    "wifiserversecure.h": "c",
+    "wificlient.h": "c",
+    "wificlientsecure.h": "c",
+    "bearsslhelpers.h": "c",
+    "certstorebearssl.h": "c",
+    "esp8266wifiscan.h": "c"
+  }
+}
