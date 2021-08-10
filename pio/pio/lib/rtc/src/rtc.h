@@ -10,7 +10,6 @@ typedef struct {
 rtcStore rtcMem;
 
 #define RTCMEMORYSTART 65
-#define MAXHOUR 5 // number of hours to deep sleep for
 
 void readRTCMemory() {
   system_rtc_mem_read(RTCMEMORYSTART, &rtcMem, sizeof(rtcMem));

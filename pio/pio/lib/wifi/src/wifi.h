@@ -2,6 +2,7 @@
 #define DWIFI_H
 
 #include <ESP8266WiFiMulti.h>
+#include <ESP8266mDNS.h>
 #include <ArduinoOTA.h>
 #include <tasks.h>
 
@@ -32,14 +33,15 @@ ESP8266WiFiMulti wifiMulti;
 
 // StartWiFi
 void startWiFi() { // Start a Wi-Fi access point, and try to connect to some given access points. Then wait for either an AP or STA connection
-  //WiFi.softAP(ssid, password);             // Start the access point
+  WiFi.softAP(ssid, password);             // Start the access point
   
   wifiMulti.addAP(ssid_ap1, ssid_pass_ap1);   // add Wi-Fi networks you want to connect to
   wifiMulti.addAP(ssid_ap2, ssid_pass_ap2);
   wifiMulti.addAP(ssid_ap3, ssid_pass_ap3);
   
   DEBUG_PRINTLN("Connecting");
-  while (wifiMulti.run() != WL_CONNECTED && WiFi.softAPgetStationNum() < 1) {  // Wait for the Wi-Fi to connect
+  //while (wifiMulti.run() != WL_CONNECTED && WiFi.softAPgetStationNum() < 1) {  // Wait for the Wi-Fi to connect
+  while (wifiMulti.run() != WL_CONNECTED) {  // Wait for the Wi-Fi to connect
     delay(250);
     DEBUG_PRINT('.');
   }
@@ -53,6 +55,15 @@ void startWiFi() { // Start a Wi-Fi access point, and try to connect to some giv
   } else {                                   // If a station is connected to the ESP SoftAP
     DEBUG_PRINT("Station connected to ESP8266 AP");
   }
+
+  // register in wifi and mdns
+  //String hostNameWifi = STASSID;
+  //hostNameWifi.concat(".local");
+  //WiFi.hostname(hostNameWifi);
+  #ifdef USE_MDNS
+  MDNS.begin(STASSID);
+  MDNS.addService("telnet", "tcp", 23); // for remotedebugger
+  #endif
   DEBUG_PRINTLN("\r\n");
 }
 

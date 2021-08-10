@@ -138,10 +138,10 @@ int sendMowReq(uint8_t *request, uint8_t len){
 }
 
 int processResp(uint8_t *data, uint8_t len, uint32_t t){
-  DBG_OUTPUT_PORT.printf("checkResp 0x%0*x 0x%0*x 0x%0*x 0x%0*x 0x%0*x to autmower %ld \r\n", 2, data[0], 2, data[1], 2, data[2], 2, data[3], 2, data[4], millis()); 
+  debugD("checkResp 0x%0*x 0x%0*x 0x%0*x 0x%0*x 0x%0*x to autmower", 2, data[0], 2, data[1], 2, data[2], 2, data[3], 2, data[4]); 
 
   if(data[0] != 0x0f || len != 5){
-    DBG_OUTPUT_PORT.println("Unexpected data at first byte in response or incorrect length.\r");
+    debugD("Unexpected data at first byte in response or incorrect length.\r");
     return 1;
   }
 
@@ -150,32 +150,31 @@ int processResp(uint8_t *data, uint8_t len, uint32_t t){
 
   switch(respCode) {
     case STATUSMOWER:
-      DBG_OUTPUT_PORT.printf("Status: %u.\r\n", respData);
       mow.stat.t = t;
       mow.stat.data = respData;
-      //DBG_OUTPUT_PORT.printf("mow.stat.t: %ld\r\n", mow.stat.t);
+      debugD("mow.stat.data: %d, mow.stat.t: %ld\r\n", mow.stat.data, mow.stat.t);
       break;
 
     case CURRENTMOWINGTIME:
       mow.actCutTime.t = t;
       mow.actCutTime.data = respData & 0x00ff;
-      DBG_OUTPUT_PORT.printf("Current mowing time: %u.\r\n", mow.actCutTime.data);
+      debugD("Current mowing time: %u.\r\n", mow.actCutTime.data);
       break;
 
     case READSECONDS:
-      DBG_OUTPUT_PORT.printf("Seconds: %u.\r\n", respData);
+      debugD("Seconds: %u", respData);
       mow.mowClock.t = t;
       mow.mowClock.seconds = respData;
       break;
 
     case READMINUTE:
-      DBG_OUTPUT_PORT.printf("Minute: %u.\r\n", respData);
+      debugD("Minute: %u", respData);
       mow.mowClock.t = t;
       mow.mowClock.minute = respData;
       break;
  
     case READHOUR:
-      DBG_OUTPUT_PORT.printf("Hour: %u.\r\n", respData);
+      debugD("Hour: %u", respData);
       mow.mowClock.t = t;
       mow.mowClock.hour = respData;
       break;     
