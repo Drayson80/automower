@@ -23,6 +23,8 @@
     "wificlientsecure.h": "c",
     "bearsslhelpers.h": "c",
     "certstorebearssl.h": "c",
-    "esp8266wifiscan.h": "c"
+    "esp8266wifiscan.h": "c",
+    "tasks.h": "c",
+    "esp8266mdns.h": "c"
   }
 }

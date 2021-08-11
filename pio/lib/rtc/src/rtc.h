@@ -5,6 +5,7 @@ extern "C" {
 
 typedef struct {
   uint32_t count;
+  //uint32_t tMowerStart;
 } rtcStore;
 
 rtcStore rtcMem;

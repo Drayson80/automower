@@ -49,9 +49,10 @@ void blockingTasks(){
       || sendTracker.respRecvd ){
 
     if(sendTracker.tracker==1) resp=sendMowReq(commands.R_STATUS, sizeof(commands.R_STATUS));
-    else if (sendTracker.tracker==2) resp=sendMowReq(commands.R_MAEHZEIT , sizeof(commands.R_MAEHZEIT));
+    else if (sendTracker.tracker==2) resp=sendMowReq(commands.R_MAEHZEIT , sizeof(commands.R_MAEHZEIT)); // doesnt work always 0
+    else if (sendTracker.tracker==3) resp=sendMowReq(commands.R_AKKU_LADEZEIT_MIN , sizeof(commands.R_AKKU_LADEZEIT_MIN));
+    //else if (sendTracker.tracker==2) resp=sendMowReq(commands.R_AKKU_LADEZEIT_MIN , sizeof(commands.R_AKKU_LADEZEIT_MIN));
     if(resp) debugW("Failed to send mowCommand."); 
-
     // set state of sendTracker so we can track the progress.
     sendTracker.respRecvd = false;
     sendTracker.t = millis(); // last time of execution
@@ -63,7 +64,7 @@ void blockingTasks(){
 
 // set condition to send requests in blockingTasks()
 void sendCmd(){
-  sendTracker.tracker=2;
+  sendTracker.tracker=3;
 }
 
 // read serial buffer in 5 bytes chunks and process response.

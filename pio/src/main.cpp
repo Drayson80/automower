@@ -22,6 +22,7 @@ unsigned long timMowStart; // millis() the time mowing started.
 // function prototypes
 void stateChanger();
 void printState();
+void printWiFiDebug();
 
 // functions
 void stateChanger(){
@@ -129,33 +130,40 @@ void setup() {
   #endif
 }
 
+uint8_t wifiStatePrev=0, wifiState=0; // last loop status
 void loop() {
   // put your main code here, to run repeatedly:
-  //digitalWrite(2, LOW);
-  //delay(500);
-  //digitalWrite(2, HIGH);
-  //delay(500);
-  //sendMowReq(commands.R_STATUS, sizeof(commands.R_STATUS));
-  //uint8_t recvAutomower[6] = {0x0f};
-  //processResp(recvAutomower, 5, millis());
+  while(true){
+    if(sendTracker.tracker) blockingTasks();
+    stateChanger();
 
-  if(sendTracker.tracker) blockingTasks();
-  stateChanger();
-  //checkMowStatus();
+    wifiState = wifiMulti.run();
+    ArduinoOTA.handle();  // listen for OTA events
+    Debug.handle();
+    MDNS.update();
+    
+    if( millis()%10000 == 0) printState();
+    if( wifiState != wifiStatePrev) printWiFiDebug();
 
-  if(millis()%2000 == 0){
-    printState();
-    delay(1);
+    yield();
+    wifiStatePrev = wifiState;
   }
-
-  wifiMulti.run();
-  ArduinoOTA.handle();  // listen for OTA events
-  Debug.handle();
-  MDNS.update();
-
-  yield();
 }
 
+void printWiFiDebug(){
+  debugD("wifistate: %u, wifiStatePrev: %u", wifiState, wifiStatePrev);
+/*
+    WL_NO_SHIELD        = 255,   // for compatibility with WiFi Shield library
+    WL_IDLE_STATUS      = 0,
+    WL_NO_SSID_AVAIL    = 1,
+    WL_SCAN_COMPLETED   = 2,
+    WL_CONNECTED        = 3,
+    WL_CONNECT_FAILED   = 4,
+    WL_CONNECTION_LOST  = 5,
+    WL_WRONG_PASSWORD   = 6,
+    WL_DISCONNECTED     = 7
+*/
+}
 void printState(){
   debugD("State change request. state: %u, mowStateDesired: %u", mowState, mowStateDesired);
 }

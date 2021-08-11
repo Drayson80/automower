@@ -4,14 +4,18 @@
 #include <serial.h> 
 
 // definitions
-#define CHARGING 0x1014
-#define START_MOWER 0x1012
-//#define MOWING 0x1002
-#define MOWING 0xEA03 // klipper
-#define PINCODE 0xE803
-#define CHASSISOFF 0x1404 // Removed top chassis
-#define YES_TO_START 0x1c04 // Tryck yes for start
-#define PARK_IN_STATION 0x2004
+#define CHARGING 1014
+#define START_MOWER 1012
+#define MOWING 1002 
+// Above is in decimal and should not be in hex.
+//#define MOWING 0xEA03 // klipper (wrong endian?!)
+#define MOWING1 1004 // klipper
+#define PINCODE 0xE803 // enter pin code, wrong endian
+#define CHASSISOFF 0x1404 // Removed top chassis, wrong endian
+#define YES_TO_START 0x1c04 // push yes to start on screen, wrong endian
+#define PARK_IN_STATION 0x2004 // When parked in station and option choosed to stay in station, wrong endian
+// 1204 2804 searching, wrong endian
+// 1804 docking, wrong endian
 
 // First byte should always be 0x0f omitting that
 #define STATUSMOWER 0x01f1
@@ -19,6 +23,7 @@
 #define READMINUTE 0x36b3
 #define READHOUR 0x36b5
 #define CURRENTMOWINGTIME 0x0038
+#define CHARGETIME 0x1ec
 
 // structures
 // Generic struct for data
@@ -45,6 +50,7 @@ struct mowDataStruct {
   genDataStruct stat;
   genDataStruct actCutTime;
   genDataStruct actMode;
+  genDataStruct chargeTime;
 } mow;
 
 
@@ -145,19 +151,26 @@ int processResp(uint8_t *data, uint8_t len, uint32_t t){
     return 1;
   }
 
-  uint32_t respData = data[3] << 8 | data[4];
+  uint32_t respData = data[4] << 8 | data[3];
   uint32_t respCode = data[1] << 8 | data[2];
 
   switch(respCode) {
+    case CHARGETIME:
+      mow.chargeTime.t = t;
+      mow.chargeTime.data = respData;
+      debugD("mow.chargeTime.data: %d, mow.chargeTime.t: %ld\r\n", mow.chargeTime.data, mow.chargeTime.t);
+      break;
+
     case STATUSMOWER:
       mow.stat.t = t;
       mow.stat.data = respData;
+      //debugD("convert status: %d,", (uint32_t)(data[4]<<8 | data[3]));
       debugD("mow.stat.data: %d, mow.stat.t: %ld\r\n", mow.stat.data, mow.stat.t);
       break;
 
     case CURRENTMOWINGTIME:
       mow.actCutTime.t = t;
-      mow.actCutTime.data = respData & 0x00ff;
+      mow.actCutTime.data = respData;
       debugD("Current mowing time: %u.\r\n", mow.actCutTime.data);
       break;
 
