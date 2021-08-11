@@ -85,8 +85,8 @@ void stateChanger(){
       break;
 
     case S_MOWING_NOW:
-      if( (unsigned long) (millis()-timMowStart) >= maxMowTime*60*1000 
-          || (get_mow_actCutTime() > maxMowTime && get_mow_status() == MOWING) ){ // cast for overflow to work
+      if( (unsigned long) (millis()-timMowStart) >= maxMowTime*60*1000// cast for overflow to work
+          || (get_mow_actCutTime() > maxMowTime && get_mow_status() == MOWING) ){         
         mowStateDesired = S_STOP_MOWING;
         printState();
       }
