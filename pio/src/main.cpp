@@ -30,12 +30,15 @@ void stateChanger(){
   // Check for state change and execute state change code
   if(mowState != mowStateDesired){
 
-    if((mowState==S_UNKOWN || mowState==S_ERROR) 
+    if((mowState==S_UNKOWN || mowState==S_ERROR || mowState==S_STOP_MOWING) 
         && mowStateDesired == S_CHARGING){
       //WiFi.forceSleepWake();
       //delay(1); //Insert code to connect to WiFi, start your servers or clients or whatever
       debugV("Charging, starting WiFi.");
-    } else if ( (mowState==S_UNKOWN || mowState==S_CHARGING)
+      writeRTCMemory(0, 0); // Write to RTC ram, mowing has stopped.
+      debugV("timMowStart: %lu", timMowStart);
+    } 
+    else if ( (mowState==S_UNKOWN || mowState==S_CHARGING)
                 && mowStateDesired == S_MOWING_NOW ){
       debugV("Switching to manual mode.");
       sendMowReq(commands.W_MODE_MAN, sizeof(commands.W_MODE_MAN));
@@ -46,6 +49,7 @@ void stateChanger(){
       delay(250);
       
       timMowStart = millis(); // Save time started.
+      writeRTCMemory(timMowStart, 1); // Save in ram.
       debugV("timMowStart: %lu", timMowStart);
       // Insert whatever code here to turn off all your web-servers and clients and whatnot
       //WiFi //wifiMulti.disconnect();
@@ -61,6 +65,10 @@ void stateChanger(){
       delay(250);
       sendMowReq(commands.W_MODE_AUTO, sizeof(commands.W_MODE_AUTO));
       delay(250);
+
+      writeRTCMemory(timMowStart, 1); // Save in ram.
+      debugV("timMowStart: %lu", timMowStart);
+
     }
 
     mowState = mowStateDesired;
@@ -128,6 +136,9 @@ void setup() {
 	Debug.showProfiler(true); // Profiler (Good to measure times, to optimize codes)
 	Debug.showColors(true); // Colors
   #endif
+  delay(10*1000);
+  readRTCMemory();
+  debugA("rtcMem timer: %u bmowing: %u", rtcMem.count, rtcMem.bMowing);
 }
 
 uint8_t wifiStatePrev=0, wifiState=0; // last loop status
