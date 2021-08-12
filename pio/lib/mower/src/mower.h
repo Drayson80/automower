@@ -10,6 +10,8 @@
 // Above is in decimal and should not be in hex.
 //#define MOWING 0xEA03 // klipper (wrong endian?!)
 #define MOWING1 1004 // klipper
+#define STOP 1044
+#define SEARCHING 1042
 #define PINCODE 0xE803 // enter pin code, wrong endian
 #define CHASSISOFF 0x1404 // Removed top chassis, wrong endian
 #define YES_TO_START 0x1c04 // push yes to start on screen, wrong endian
@@ -19,9 +21,9 @@
 
 // First byte should always be 0x0f omitting that
 #define STATUSMOWER 0x01f1
-#define READSECONDS 0x36b1
-#define READMINUTE 0x36b3
-#define READHOUR 0x36b5
+#define READSECONDS 0x36b0
+#define READMINUTE 0x36b1
+#define READHOUR 0x36b2
 #define CURRENTMOWINGTIME 0x0038
 #define CHARGETIME 0x1ec
 
@@ -56,9 +58,9 @@ struct mowDataStruct {
 
 struct allcommands {
   uint8_t R_STATUS[5] = {0xf,0x1,0xf1,0x0,0x0};
-  uint8_t R_SEKUNDE[5] = {0xf,0x36,0xb1,0x0,0x0};
-  uint8_t R_MINUTE[5] = {0xf,0x36,0xb3,0x0,0x0};
-  uint8_t R_STUNDE[5] = {0xf,0x36,0xb5,0x0,0x0};
+  uint8_t R_SEKUNDE[5] = {0xf,0x36,0xb0,0x0,0x0};
+  uint8_t R_MINUTE[5] = {0xf,0x36,0xb1,0x0,0x0};
+  uint8_t R_STUNDE[5] = {0xf,0x36,0xb2,0x0,0x0};
   uint8_t R_TAG[5] = {0xf,0x36,0xb7,0x0,0x0};
   uint8_t R_MONAT[5] = {0xf,0x36,0xb9,0x0,0x0};
   uint8_t R_JAHR[5] = {0xf,0x36,0xbd,0x0,0x0};
@@ -234,7 +236,7 @@ int time_valid(unsigned long t){
 
 void update_internal_clock(){ // Update our mirror clock of that in automower.
   if ( (unsigned long)(millis()-mow.mowClock.t) >= 1000 ) {
-    debugD("Update clock. %u:%u:%u", mow.mowClock.hour, mow.mowClock.minute, mow.mowClock.seconds);
+    //debugV("Update clock. %u:%u:%u", mow.mowClock.hour, mow.mowClock.minute, mow.mowClock.seconds);
     if ( ++mow.mowClock.seconds == 60) {
       mow.mowClock.minute++;
       mow.mowClock.seconds = 0;
@@ -244,8 +246,9 @@ void update_internal_clock(){ // Update our mirror clock of that in automower.
       mow.mowClock.minute = 0;
     }
     if ( mow.mowClock.hour == 24) mow.mowClock.hour = 0;
-    
-    debugD("New clock. %u:%u:%u", mow.mowClock.hour, mow.mowClock.minute, mow.mowClock.seconds);
+
+    mow.mowClock.t = millis(); // Update last time updated.
+    debugV("New clock. %u:%u:%u", mow.mowClock.hour, mow.mowClock.minute, mow.mowClock.seconds);
   }
 
 }

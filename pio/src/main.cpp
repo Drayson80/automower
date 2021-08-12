@@ -145,11 +145,13 @@ void loop() {
   while(true){
     if(sendTracker.tracker) blockingTasks();
     stateChanger();
+    update_internal_clock(); // Update our internal mirror clock.
 
     wifiState = wifiMulti.run();
     ArduinoOTA.handle();  // listen for OTA events
     Debug.handle();
     MDNS.update();
+
     
     if( millis()%10000 == 0) printState();
     if( wifiState != wifiStatePrev) printWiFiDebug();
@@ -175,5 +177,5 @@ void printWiFiDebug(){
 }
 void printState(){
   debugD("State change request. state: %u, mowStateDesired: %u", mowState, mowStateDesired);
-  //debugD("rtcMem timer: %u bmowing: %u", rtcMem.count, rtcMem.bMowing);
+  debugD("mowClock: %u:%u:%u ", mow.mowClock.hour, mow.mowClock.minute, mow.mowClock.seconds);
 }

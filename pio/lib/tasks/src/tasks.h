@@ -8,7 +8,7 @@
 // instances
 Ticker sendCommand, readBuffer, wrteLog, getTime; // Tasks
 bool sendCmdFlag=false;
-unsigned long lastClockSync;
+unsigned long lastClockSync=0;
 
 //structures
 struct sendStruct {
@@ -60,10 +60,12 @@ void blockingTasks(){
     sendTracker.tracker--;
   }
 
-  if( (unsigned long)(millis()-lastClockSync) >= 60*60*1000 ) { // Synchronize internal clock with mower every hour.
+  if( (unsigned long)(millis()-lastClockSync) >= 60*60*1000 || lastClockSync==0 ) { // Synchronize internal clock with mower every hour.
     resp = sendMowReq(commands.R_STUNDE, sizeof(commands.R_STUNDE));
     if( !resp ) resp = sendMowReq(commands.R_MINUTE, sizeof(commands.R_MINUTE));
     if( !resp ) resp = sendMowReq(commands.R_SEKUNDE, sizeof(commands.R_SEKUNDE));
+
+    if( !resp) lastClockSync = millis();
   }
   
   if(sendTracker.tracker==0) sendCmdFlag=false; // all messages sent.
