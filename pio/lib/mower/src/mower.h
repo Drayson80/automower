@@ -39,9 +39,9 @@ struct genDataStruct {
 // was latest synched at.
 struct mowTime {
   unsigned long t = 0;
-  int8_t hour = -1;
-  int8_t minute = -1;
-  int8_t seconds = -1;
+  int8_t hour = 0;
+  int8_t minute = 0;
+  int8_t seconds = 0;
 } ;
 
 // Mower status as known
@@ -133,6 +133,7 @@ int checkMowStatus(); // Decide what to do in different stages
 int get_mow_status(); // Get status value. -1 = not valid data.
 int get_mow_actCutTime(); // Actual cutTime. -1 = not valid data.
 int time_valid( unsigned long t); 
+void update_internal_clock(); // Update our mirror clock of that in automower.
 
 // variables
 
@@ -229,5 +230,23 @@ int get_mow_actCutTime(){ // Actual cutTime. -1 = not valid data.
 
 int time_valid(unsigned long t){
   return (unsigned long)(millis()-t) <= 60*1e3;
+}
+
+void update_internal_clock(){ // Update our mirror clock of that in automower.
+  if ( (unsigned long)(millis()-mow.mowClock.t) >= 1000 ) {
+    debugD("Update clock. %u:%u:%u", mow.mowClock.hour, mow.mowClock.minute, mow.mowClock.seconds);
+    if ( ++mow.mowClock.seconds == 60) {
+      mow.mowClock.minute++;
+      mow.mowClock.seconds = 0;
+    }
+    if ( mow.mowClock.minute == 60 ) {
+      mow.mowClock.hour++;
+      mow.mowClock.minute = 0;
+    }
+    if ( mow.mowClock.hour == 24) mow.mowClock.hour = 0;
+    
+    debugD("New clock. %u:%u:%u", mow.mowClock.hour, mow.mowClock.minute, mow.mowClock.seconds);
+  }
+
 }
 #endif // MOWER_H

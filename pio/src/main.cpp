@@ -35,8 +35,6 @@ void stateChanger(){
       //WiFi.forceSleepWake();
       //delay(1); //Insert code to connect to WiFi, start your servers or clients or whatever
       debugV("Charging, starting WiFi.");
-      writeRTCMemory(0, 0); // Write to RTC ram, mowing has stopped.
-      debugV("timMowStart: %lu", timMowStart);
     } 
     else if ( (mowState==S_UNKOWN || mowState==S_CHARGING)
                 && mowStateDesired == S_MOWING_NOW ){
@@ -49,7 +47,6 @@ void stateChanger(){
       delay(250);
       
       timMowStart = millis(); // Save time started.
-      writeRTCMemory(timMowStart, 1); // Save in ram.
       debugV("timMowStart: %lu", timMowStart);
       // Insert whatever code here to turn off all your web-servers and clients and whatnot
       //WiFi //wifiMulti.disconnect();
@@ -66,7 +63,6 @@ void stateChanger(){
       sendMowReq(commands.W_MODE_AUTO, sizeof(commands.W_MODE_AUTO));
       delay(250);
 
-      writeRTCMemory(timMowStart, 1); // Save in ram.
       debugV("timMowStart: %lu", timMowStart);
 
     }
@@ -124,9 +120,10 @@ void setup() {
     writeRTCMemory(i);  
     yield();
   }*/
+  readRTCMemory(); // Read in RTC Memory. TODO: Make a counter updated in memory.
   setupUART();
   startWiFi();
-  startOTA();
+  startOTA();      // Waits for 60 sec to always allow OTA flash on power on.
   startTasks();
 
   #ifndef DEBUG_DISABLE
@@ -136,9 +133,10 @@ void setup() {
 	Debug.showProfiler(true); // Profiler (Good to measure times, to optimize codes)
 	Debug.showColors(true); // Colors
   #endif
-  delay(10*1000);
-  readRTCMemory();
-  debugA("rtcMem timer: %u bmowing: %u", rtcMem.count, rtcMem.bMowing);
+
+  Serial.println("Run program.");
+  debugA("Run program");
+
 }
 
 uint8_t wifiStatePrev=0, wifiState=0; // last loop status
@@ -155,9 +153,9 @@ void loop() {
     
     if( millis()%10000 == 0) printState();
     if( wifiState != wifiStatePrev) printWiFiDebug();
+    wifiStatePrev = wifiState;
 
     yield();
-    wifiStatePrev = wifiState;
   }
 }
 
@@ -177,4 +175,5 @@ void printWiFiDebug(){
 }
 void printState(){
   debugD("State change request. state: %u, mowStateDesired: %u", mowState, mowStateDesired);
+  //debugD("rtcMem timer: %u bmowing: %u", rtcMem.count, rtcMem.bMowing);
 }

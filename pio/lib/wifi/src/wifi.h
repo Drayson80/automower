@@ -74,12 +74,13 @@ void startOTA(){
   ArduinoOTA.setPassword(OTAPassword);
 
   ArduinoOTA.onStart([]() {
+    Serial.println("OnStart OTA");
     stopTasks();
   });
   ArduinoOTA.onEnd([]() {
   });
   ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-    DBG_OUTPUT_PORT.printf("Progress: %u%%\r\n", (progress / (total / 100)));
+    //DBG_OUTPUT_PORT.printf("Progress: %u%%\r\n", (progress / (total / 100)));
   });
   ArduinoOTA.onError([](ota_error_t error) {
     DBG_OUTPUT_PORT.printf("Error[%u]: ", error);
@@ -91,6 +92,17 @@ void startOTA(){
   });
   ArduinoOTA.begin();
   DEBUG_PRINTLN("OTA ready\r\n");
+
+  // Allow for OTA during first 60 seconds startup even if our code is broken.
+  Serial.println("Waiting 60sec for OTA.");
+  unsigned long start=millis();
+  while (true) {
+    if( (unsigned long)(millis()-start) >= 60*1000 ) break;
+    ArduinoOTA.handle();  // listen for OTA events
+    //delay(1);
+    yield();
+  }
+
 }
 
 #endif

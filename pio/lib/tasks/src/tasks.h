@@ -8,6 +8,7 @@
 // instances
 Ticker sendCommand, readBuffer, wrteLog, getTime; // Tasks
 bool sendCmdFlag=false;
+unsigned long lastClockSync;
 
 //structures
 struct sendStruct {
@@ -45,11 +46,11 @@ void blockingTasks(){
 
   // Send if timeout or response receieved.
   if((sendTracker.tracker 
-      && millis()-sendTracker.t > 1000) 
+      && (unsigned long)(millis()-sendTracker.t) > 1000) 
       || sendTracker.respRecvd ){
 
     if(sendTracker.tracker==1) resp=sendMowReq(commands.R_STATUS, sizeof(commands.R_STATUS));
-    else if (sendTracker.tracker==2) resp=sendMowReq(commands.R_MAEHZEIT , sizeof(commands.R_MAEHZEIT)); // doesnt work always 0
+    //else if (sendTracker.tracker==2) resp=sendMowReq(commands.R_MAEHZEIT , sizeof(commands.R_MAEHZEIT)); // doesnt work always 0
     else if (sendTracker.tracker==3) resp=sendMowReq(commands.R_AKKU_LADEZEIT_MIN , sizeof(commands.R_AKKU_LADEZEIT_MIN));
     //else if (sendTracker.tracker==2) resp=sendMowReq(commands.R_AKKU_LADEZEIT_MIN , sizeof(commands.R_AKKU_LADEZEIT_MIN));
     if(resp) debugW("Failed to send mowCommand."); 
@@ -57,6 +58,12 @@ void blockingTasks(){
     sendTracker.respRecvd = false;
     sendTracker.t = millis(); // last time of execution
     sendTracker.tracker--;
+  }
+
+  if( (unsigned long)(millis()-lastClockSync) >= 60*60*1000 ) { // Synchronize internal clock with mower every hour.
+    resp = sendMowReq(commands.R_STUNDE, sizeof(commands.R_STUNDE));
+    if( !resp ) resp = sendMowReq(commands.R_MINUTE, sizeof(commands.R_MINUTE));
+    if( !resp ) resp = sendMowReq(commands.R_SEKUNDE, sizeof(commands.R_SEKUNDE));
   }
   
   if(sendTracker.tracker==0) sendCmdFlag=false; // all messages sent.
