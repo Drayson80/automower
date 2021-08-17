@@ -33,6 +33,4 @@ RemoteDebug Debug;
   #define DEBUG_PRINTLN(x)
 #endif
 
-
-
 #endif // DBGDEFS_H

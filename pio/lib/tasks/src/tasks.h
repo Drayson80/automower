@@ -8,7 +8,6 @@
 // instances
 Ticker sendCommand, readBuffer, wrteLog, getTime; // Tasks
 bool sendCmdFlag=false;
-unsigned long lastClockSync=0;
 
 //structures
 struct sendStruct {
@@ -30,7 +29,7 @@ void startTasks() {
   // Wait 0.5 seconds for mower to start
   sendCommand.attach(10, sendCmd);    // Task that sends commands periodically.
   readBuffer.attach(5, readBuf);   // Takes care of data in serial buffer
-  wrteLog.attach(10, writeLog);       // Write to log file
+  //wrteLog.attach(10, writeLog);       // Write to log file
   //getTime.attach(5, synchTime);         // Check if we should synchronize clock
 }
 
@@ -38,7 +37,7 @@ void stopTasks() {
   Serial.println("stopTasks");
   sendCommand.detach();    // Task that sends commands periodically.
   readBuffer.detach();   // Takes care of data in serial buffer
-  wrteLog.detach();       // Write to log file
+  //wrteLog.detach();       // Write to log file
 }
 
 void blockingTasks(){
@@ -46,12 +45,12 @@ void blockingTasks(){
 
   // Send if timeout or response receieved.
   if((sendTracker.tracker 
-      && (unsigned long)(millis()-sendTracker.t) > 1000) 
+      && (unsigned long)(millis()-sendTracker.t) > 1000) // Wait 1000ms between requests 
       || sendTracker.respRecvd ){
 
     if(sendTracker.tracker==1) resp=sendMowReq(commands.R_STATUS, sizeof(commands.R_STATUS));
     //else if (sendTracker.tracker==2) resp=sendMowReq(commands.R_MAEHZEIT , sizeof(commands.R_MAEHZEIT)); // doesnt work always 0
-    else if (sendTracker.tracker==3) resp=sendMowReq(commands.R_AKKU_LADEZEIT_MIN , sizeof(commands.R_AKKU_LADEZEIT_MIN));
+    else if (sendTracker.tracker==2) resp=sendMowReq(commands.R_AKKU_LADEZEIT_MIN , sizeof(commands.R_AKKU_LADEZEIT_MIN));
     //else if (sendTracker.tracker==2) resp=sendMowReq(commands.R_AKKU_LADEZEIT_MIN , sizeof(commands.R_AKKU_LADEZEIT_MIN));
     if(resp) debugW("Failed to send mowCommand."); 
     // set state of sendTracker so we can track the progress.
@@ -59,21 +58,13 @@ void blockingTasks(){
     sendTracker.t = millis(); // last time of execution
     sendTracker.tracker--;
   }
-
-  if( (unsigned long)(millis()-lastClockSync) >= 60*60*1000 || lastClockSync==0 ) { // Synchronize internal clock with mower every hour.
-    resp = sendMowReq(commands.R_STUNDE, sizeof(commands.R_STUNDE));
-    if( !resp ) resp = sendMowReq(commands.R_MINUTE, sizeof(commands.R_MINUTE));
-    if( !resp ) resp = sendMowReq(commands.R_SEKUNDE, sizeof(commands.R_SEKUNDE));
-
-    if( !resp) lastClockSync = millis();
-  }
   
   if(sendTracker.tracker==0) sendCmdFlag=false; // all messages sent.
 }
 
 // set condition to send requests in blockingTasks()
 void sendCmd(){
-  sendTracker.tracker=3;
+  sendTracker.tracker=2;
 }
 
 // read serial buffer in 5 bytes chunks and process response.

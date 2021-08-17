@@ -1,11 +1,18 @@
+#ifndef D_RTC_H
+#define D_RTC_H
+
+// includes
+#include <mower.h>
+
 // RTC MEMORY
 extern "C" {
 #include "user_interface.h"
 }
 
 typedef struct {
-  uint32_t count;   // Timer at mowing start
-  uint32_t bMowing; // Boolean: True if mowing.
+  unsigned long mowTime_b;    // Current cutting session in milliseconds [ms].     
+  uint32_t mowState_b;        // 
+  uint32_t mowStateDesired_b; // 
 } rtcStore;
 
 rtcStore rtcMem;
@@ -20,9 +27,9 @@ void readRTCMemory() {
   yield();
 }
 
-void writeRTCMemory(uint32_t cnt, uint32_t bMowing) {
-  rtcMem.count = cnt;
-  rtcMem.bMowing = bMowing;
+void writeRTCMemory() {
   system_rtc_mem_write(RTCMEMORYSTART, &rtcMem, buckets*4);
   yield();
 }
+
+#endif // D_RTC_H

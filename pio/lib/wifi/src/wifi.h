@@ -9,6 +9,7 @@
 // function prototypes
 void startWiFi(); 
 void startOTA();
+void startDebug();
 
 // Wifi
 #define STASSID "amw"          // AP Name
@@ -89,6 +90,7 @@ void startOTA(){
     else if (error == OTA_CONNECT_ERROR) DEBUG_PRINTLN("Connect Failed");
     else if (error == OTA_RECEIVE_ERROR) DEBUG_PRINTLN("Receive Failed");
     else if (error == OTA_END_ERROR) DEBUG_PRINTLN("End Failed");
+    startTasks(); // Restart in case of failure
   });
   ArduinoOTA.begin();
   DEBUG_PRINTLN("OTA ready\r\n");
@@ -105,4 +107,13 @@ void startOTA(){
 
 }
 
+void startDebug(){
+  #ifndef DEBUG_DISABLE
+  // Initialize RemoteDebug
+	Debug.begin(STASSID); // Initialize the WiFi server
+  Debug.setResetCmdEnabled(true); // Enable the reset command
+	Debug.showProfiler(true); // Profiler (Good to measure times, to optimize codes)
+	Debug.showColors(true); // Colors
+  #endif
+}
 #endif

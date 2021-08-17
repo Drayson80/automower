@@ -2,9 +2,11 @@
 #define MOWER_H
 // includes
 #include <serial.h> 
+#include <rtc.h>
 
 // definitions
 #define CHARGING 1014
+#define IN_CHARGER(x) 1025>x && x>1013 // 1025>x>1013 => mower in charger
 #define START_MOWER 1012
 #define MOWING 1002 
 // Above is in decimal and should not be in hex.
@@ -26,6 +28,40 @@
 #define READHOUR 0x36b2
 #define CURRENTMOWINGTIME 0x0038
 #define CHARGETIME 0x1ec
+
+			// 	"6" {set automower_status "[clock format [clock sec] -format %H:%M:%S]: Linker Radmotor blockiert"}
+			// 	"12" {set automower_status "[clock format [clock sec] -format %H:%M:%S]: Kein Schleifensignal"}
+			// 	"16" {set automower_status "[clock format [clock sec] -format %H:%M:%S]: Außerhalb"}
+			// 	"18" {set automower_status "[clock format [clock sec] -format %H:%M:%S]: Niedrige Batteriespannung"}
+			// 	"26" {set automower_status "[clock format [clock sec] -format %H:%M:%S]: Ladestation blockiert"}
+      //  28 behöver laddas manuellt.
+			// 	"34" {set automower_status "[clock format [clock sec] -format %H:%M:%S]: Mäher hochgehoben"}
+			// 	"52" {set automower_status "[clock format [clock sec] -format %H:%M:%S]: Kein Kontakt zur Ladestation"}
+			// 	"54" {set automower_status "[clock format [clock sec] -format %H:%M:%S]: Pin abgelaufen"}
+			// 	"1000" {set automower_status "[clock format [clock sec] -format %H:%M:%S]: Aus LS ausfahren"}
+			// 	"1002" {set automower_status "[clock format [clock sec] -format %H:%M:%S]: Mähen"}
+			// 	"1006" {set automower_status "[clock format [clock sec] -format %H:%M:%S]: Mähwerk starten"}
+			// 	"1008" {set automower_status "[clock format [clock sec] -format %H:%M:%S]: Mähwerk gestartet"}
+			// 	"1012" {set automower_status "[clock format [clock sec] -format %H:%M:%S]: Signal starte Mähwerk"}
+			// 	"1014" {set automower_status "[clock format [clock sec] -format %H:%M:%S]: Laden"}
+			// 	"1016" {set automower_status "[clock format [clock sec] -format %H:%M:%S]: in LS wartend"}
+			// 	"1024" {set automower_status "[clock format [clock sec] -format %H:%M:%S]: aus LS einfahren"}
+			// 	"1036" {set automower_status "[clock format [clock sec] -format %H:%M:%S]: Viereckmodus"}
+			// 	"1038" {set automower_status "[clock format [clock sec] -format %H:%M:%S]: Festgefahren"}
+			// 	"1040" {set automower_status "[clock format [clock sec] -format %H:%M:%S]: Kollision"}
+			// 	"1042" {set automower_status "[clock format [clock sec] -format %H:%M:%S]: Suchen"}
+			// 	"1044" {set automower_status "[clock format [clock sec] -format %H:%M:%S]: Stop"}
+			// 	"1048" {set automower_status "[clock format [clock sec] -format %H:%M:%S]: Andocken"}
+			// 	"1050" {set automower_status "[clock format [clock sec] -format %H:%M:%S]: aus LS ausfahren"}
+			// 	"1052" {set automower_status "[clock format [clock sec] -format %H:%M:%S]: Fehler"}
+			// 	"1056" {set automower_status "[clock format [clock sec] -format %H:%M:%S]: Wartet (Modus Manuell/Home)"}
+			// 	"1058" {set automower_status "[clock format [clock sec] -format %H:%M:%S]: Begrenzung folgen"}
+			// 	"1060" {set automower_status "[clock format [clock sec] -format %H:%M:%S]: N-Signal gefunden"}
+			// 	"1062" {set automower_status "[clock format [clock sec] -format %H:%M:%S]: Festgefahren"}
+			// 	"1064" {set automower_status "[clock format [clock sec] -format %H:%M:%S]: Suchen"}
+			// 	"1070" {set automower_status "[clock format [clock sec] -format %H:%M:%S]: Suchschleife folgen"}
+			// 	"1072" {set automower_status "[clock format [clock sec] -format %H:%M:%S]: Schleife folgen"}
+			// }
 
 // structures
 // Generic struct for data
@@ -135,9 +171,13 @@ int checkMowStatus(); // Decide what to do in different stages
 int get_mow_status(); // Get status value. -1 = not valid data.
 int get_mow_actCutTime(); // Actual cutTime. -1 = not valid data.
 int time_valid( unsigned long t); 
-void update_internal_clock(); // Update our mirror clock of that in automower.
+void incrementInternalClock(); // Update our mirror clock of that in automower.
+void checkIfReset(unsigned long *tOffs, uint8_t *mowState, uint8_t *mowStateDesired);
+void syncInternalClock();
+void backupRAM(unsigned long time); // write data to ram backup
 
 // variables
+unsigned long lastClockSync=0; // time when internal Clock was synced with mower clock.
 
 // functions
 int sendMowReq(uint8_t *request, uint8_t len){
@@ -198,33 +238,11 @@ int processResp(uint8_t *data, uint8_t len, uint32_t t){
   return 0;
 }
 
-int checkMowStatus() {
-  // if(mow.stat.data == -1
-  //   ||  (unsigned long) (millis()-mow.stat.t) > 60*1e3){
-  //     //DEBUG_PRINTLN("No valid status.");  
-  //     return 1; // No data recieved.
-  //   }   
-
-  // if(mow.stat.data == CHARGING){
-  //     mowStateDesired = S_CHARGING;
-  // }
-
-  // if(mow.actCutTime.data == -1 
-  //   || (unsigned long) (millis()-mow.actCutTime.t) > 60*1e3) {
-  //     //Serial.println("actCutTime no new data.");
-  //     return 1;
-  // }
-
-  // if(mow.stat.data == MOWING && mow.actCutTime.data > 2){
-  //   mowStateDesired = S_MOWING_NOW;
-  // }
-  return 0;
-}
-
 int get_mow_status(){ // Get status value. -1 = not valid data.
   if( time_valid(mow.stat.t) ) return mow.stat.data;
   return -1;
 }
+
 int get_mow_actCutTime(){ // Actual cutTime. -1 = not valid data.
   if( time_valid(mow.actCutTime.t) ) return mow.actCutTime.data;
   return -1;
@@ -234,7 +252,7 @@ int time_valid(unsigned long t){
   return (unsigned long)(millis()-t) <= 60*1e3;
 }
 
-void update_internal_clock(){ // Update our mirror clock of that in automower.
+void incrementInternalClock(){ // Update our mirror clock of that in automower.
   if ( (unsigned long)(millis()-mow.mowClock.t) >= 1000 ) {
     //debugV("Update clock. %u:%u:%u", mow.mowClock.hour, mow.mowClock.minute, mow.mowClock.seconds);
     if ( ++mow.mowClock.seconds == 60) {
@@ -252,4 +270,65 @@ void update_internal_clock(){ // Update our mirror clock of that in automower.
   }
 
 }
+
+struct	rst_info	*rtc_info;
+
+void checkIfReset(unsigned long *tOffs, uint8_t *mowState, uint8_t *mowStateDesired){
+  // Check rtc memory to determine if we restarted from a reset.
+  rtc_info = system_get_rst_info(); // Get reset cause
+  // TODO: use in combination with info from ram.
+  
+  if(rtcMem.mowTime_b >= 0 
+    && rtcMem.mowState_b == S_MOWING_NOW
+    && rtcMem.mowStateDesired_b == S_MOWING_NOW) {
+      // Restore values if reset detected
+      *tOffs = rtcMem.mowTime_b;
+      *mowState = (uint8_t) rtcMem.mowState_b;
+      *mowStateDesired = (uint8_t) rtcMem.mowStateDesired_b;
+    }
+}
+
+void syncInternalClock(){
+  if( (unsigned long)(millis()-lastClockSync) >= 60*60*1000 || lastClockSync==0 ) { // Synchronize internal clock with mower every hour.
+    char resp = sendMowReq(commands.R_STUNDE, sizeof(commands.R_STUNDE));
+    if( !resp ) resp = sendMowReq(commands.R_MINUTE, sizeof(commands.R_MINUTE));
+    if( !resp ) resp = sendMowReq(commands.R_SEKUNDE, sizeof(commands.R_SEKUNDE));
+
+    if( !resp) lastClockSync = millis(); 
+  }
+}
+
+void manModeMowReq(){ // Manual mode request
+  sendMowReq(commands.W_MODE_MAN, sizeof(commands.W_MODE_MAN));
+  delay(250);
+  sendMowReq(commands.W_MODE_MAN, sizeof(commands.W_MODE_MAN));
+  delay(250);
+  sendMowReq(commands.W_MODE_MAN, sizeof(commands.W_MODE_MAN));
+  delay(250);
+
+} 
+
+void autoModeMowReq(){ // Auto mode request
+  sendMowReq(commands.W_MODE_AUTO, sizeof(commands.W_MODE_AUTO));
+  delay(250);
+  sendMowReq(commands.W_MODE_AUTO, sizeof(commands.W_MODE_AUTO));
+  delay(250);
+  sendMowReq(commands.W_MODE_AUTO, sizeof(commands.W_MODE_AUTO));
+  delay(250);
+}
+
+void backupRAM(unsigned long time, uint8_t mowState, rtcStore mem){
+  //rtcMem.mowTime_b = time;
+  //rtcMem.mowState_b = mowState;
+  //rtcMem.mowStateDesired_b = mowStateDesired;
+
+  rtcMem.mowTime_b = time;
+  rtcMem.mowState_b = (uint32_t) mowState;
+  rtcMem.mowStateDesired_b = (uint32_t) mowState;
+
+  writeRTCMemory(); // Write to ram
+
+  debugD("mowTime_b: %lu mowstate_b: %i, mowstatedesired_b: %i", rtcMem.mowTime_b, rtcMem.mowState_b, rtcMem.mowStateDesired_b);
+}
+
 #endif // MOWER_H

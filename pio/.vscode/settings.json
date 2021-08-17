@@ -25,6 +25,18 @@
     "certstorebearssl.h": "c",
     "esp8266wifiscan.h": "c",
     "tasks.h": "c",
-    "esp8266mdns.h": "c"
+    "esp8266mdns.h": "c",
+    "dbgdefs.h": "c",
+    "*.tcc": "cpp",
+    "deque": "cpp",
+    "list": "cpp",
+    "unordered_map": "cpp",
+    "vector": "cpp",
+    "memory": "cpp",
+    "random": "cpp",
+    "initializer_list": "cpp",
+    "mower.h": "c",
+    "remotedebug.h": "c",
+    "wifi.h": "c"
   }
 }
