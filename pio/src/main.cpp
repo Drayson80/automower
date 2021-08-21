@@ -14,15 +14,12 @@
 #include <rtc.h>
 #include <serial.h>
 #include <mower.h>    // mower definitions and structs
-#include <filesystem.h>
-//#include <statemachine.h>
 
 const uint8_t maxMowTime = 180; // [minutes] Maximum mowing time
 uint8_t mowState=255, mowStateDesired=255; // Statemachine actual and desired state.
 unsigned long tOffsetMow=0; // Mowing offset added to current mowing time. (if reset detected)
 unsigned long timMowStart; // millis() the time mowing started.
 #define MOWTIME ((unsigned long)(millis()-timMowStart))+tOffsetMow
-bool runonce=false;
 
 // function prototypes
 void printWiFiDebug();
@@ -42,8 +39,11 @@ void stateChanger(){
     else if ( (mowState==S_UNKOWN || mowState==S_CHARGING)
                 && mowStateDesired == S_MOWING_NOW ){
       debugI("Switching to manual mode.");
-      //manModeMowReq();
-      
+      manModeMowReq();
+
+      rtcMem.reset_counter = 0; // Reset reset counter.
+      writeRTCMemory();
+
       timMowStart = millis(); // time when cutting started.
       debugV("Time at cutting start. timMowStart: %lu", timMowStart);
       
@@ -64,13 +64,13 @@ void stateChanger(){
   // Run actions in state
   switch(mowState){
     case S_UNKOWN:
-      if ( IN_CHARGER(get_mow_status()) ) mowStateDesired = S_CHARGING;
+      if ( IS_CHARGING ) mowStateDesired = S_CHARGING;
       //else if ( get_mow_status() == MOWING) mowStateDesired = S_MOWING_NOW;
       if(mowStateDesired != mowState) printState();
       break;
 
     case S_CHARGING:
-      if ( get_mow_status() == MOWING 
+      if ( IS_MOWING 
            && ((get_mow_actCutTime() > 2) || true)) {
         mowStateDesired = S_MOWING_NOW;
         printState();
@@ -80,12 +80,12 @@ void stateChanger(){
 
     case S_MOWING_NOW:
       if( MOWTIME >= maxMowTime*60*1000// cast for overflow to work
-          || (get_mow_actCutTime() > maxMowTime && get_mow_status() == MOWING) ){         
+          || (get_mow_actCutTime() > maxMowTime && IS_MOWING ) ){         
         mowStateDesired = S_STOP_MOWING;
         printState();
       }
 
-      if( !(MOWTIME % 60000) ) backupRAM(MOWTIME, mowState, rtcMem); // Update ram backup every minute.
+      if( !(MOWTIME % 60000 == 0) ) backupRAM(MOWTIME, mowState, rtcMem); // Update ram backup every minute.
       break;
 
     case S_STOP_MOWING:
@@ -108,7 +108,7 @@ void setup() {
   checkIfReset(&tOffsetMow, &mowState, &mowStateDesired);  // If reset during mowing, restore cuttingtime and statemachine.
   setupUART();
   startWiFi();
-  startOTA();      // Waits for 60 sec to always allow OTA flash on power on.
+  startOTA();      // Waits for 60 sec, allows OTA flash on power on. Even if code is broken further down.
   startTasks();
   startDebug();
   //autoModeMowReq();
@@ -144,7 +144,7 @@ void loop() {
 void printState(){
   debugD("State change request. state: %u, mowStateDesired: %u", mowState, mowStateDesired);
   debugD("mowClock: %u:%u:%u ", mow.mowClock.hour, mow.mowClock.minute, mow.mowClock.seconds);
-  debugD("mowTime_b: %lu, mowstate_b: %i, mowstatedesired_b: %i", rtcMem.mowTime_b, rtcMem.mowState_b, rtcMem.mowStateDesired_b);
+  debugD("reset_counter: %u, mowTime_b: %lu, mowstate_b: %i, mowstatedesired_b: %i", rtcMem.reset_counter, rtcMem.mowTime_b, rtcMem.mowState_b, rtcMem.mowStateDesired_b);
 }
 
 void printWiFiDebug(){

@@ -2,7 +2,6 @@
 #define D_RTC_H
 
 // includes
-#include <mower.h>
 
 // RTC MEMORY
 extern "C" {
@@ -13,6 +12,7 @@ typedef struct {
   unsigned long mowTime_b;    // Current cutting session in milliseconds [ms].     
   uint32_t mowState_b;        // 
   uint32_t mowStateDesired_b; // 
+  uint32_t reset_counter;   // Count number of resets during/last mowing.
 } rtcStore;
 
 rtcStore rtcMem;

@@ -6,10 +6,14 @@
 
 // definitions
 #define CHARGING 1014
-#define IN_CHARGER(x) 1025>x && x>1013 // 1025>x>1013 => mower in charger
+#define IN_CHARGER(x)  x>=1014 && x<=1024 // 1024>=x>=1014 => mower in charger
 #define START_MOWER 1012
 #define MOWING 1002 
 // Above is in decimal and should not be in hex.
+// Readable code macros
+#define IS_CHARGING IN_CHARGER(get_mow_status())
+#define IS_MOWING get_mow_status() >= 1002 && get_mow_status() <= 1008  // 1008>=x>=1002 => mower is mowing
+
 //#define MOWING 0xEA03 // klipper (wrong endian?!)
 #define MOWING1 1004 // klipper
 #define STOP 1044
@@ -285,6 +289,7 @@ void checkIfReset(unsigned long *tOffs, uint8_t *mowState, uint8_t *mowStateDesi
       *tOffs = rtcMem.mowTime_b;
       *mowState = (uint8_t) rtcMem.mowState_b;
       *mowStateDesired = (uint8_t) rtcMem.mowStateDesired_b;
+      rtcMem.reset_counter++; // Count up reset counter
     }
 }
 
@@ -318,14 +323,9 @@ void autoModeMowReq(){ // Auto mode request
 }
 
 void backupRAM(unsigned long time, uint8_t mowState, rtcStore mem){
-  //rtcMem.mowTime_b = time;
-  //rtcMem.mowState_b = mowState;
-  //rtcMem.mowStateDesired_b = mowStateDesired;
-
   rtcMem.mowTime_b = time;
   rtcMem.mowState_b = (uint32_t) mowState;
   rtcMem.mowStateDesired_b = (uint32_t) mowState;
-
   writeRTCMemory(); // Write to ram
 
   debugD("mowTime_b: %lu mowstate_b: %i, mowstatedesired_b: %i", rtcMem.mowTime_b, rtcMem.mowState_b, rtcMem.mowStateDesired_b);
