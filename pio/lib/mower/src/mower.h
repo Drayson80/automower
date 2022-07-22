@@ -30,8 +30,16 @@
 #define READSECONDS 0x36b0
 #define READMINUTE 0x36b1
 #define READHOUR 0x36b2
-#define CURRENTMOWINGTIME 0x0038
+#define CURRENTMOWINGTIME 0x0037
 #define CHARGETIME 0x1ec
+#define BATCAPUSED 0x2ee0
+#define OPSTATUS 0x0138
+#define OPPROZENT 0x0134
+#define OPREF 0x0137
+#define BATCAPMA 0x01eb
+#define BATCAPMAH 0x01ef
+#define BATLASTCHRG 0x0234
+#define BATVOLTAGE 0x2ef4
 
 			// 	"6" {set automower_status "[clock format [clock sec] -format %H:%M:%S]: Linker Radmotor blockiert"}
 			// 	"12" {set automower_status "[clock format [clock sec] -format %H:%M:%S]: Kein Schleifensignal"}
@@ -93,6 +101,14 @@ struct mowDataStruct {
   genDataStruct actCutTime;
   genDataStruct actMode;
   genDataStruct chargeTime;
+  genDataStruct batCapUsed;
+  genDataStruct opStatus;
+  genDataStruct opProcent;
+  genDataStruct opRef;
+  genDataStruct batCapMah;
+  genDataStruct batCapMa;
+  genDataStruct batLstChrgTimeMin;
+  genDataStruct batVoltage;
 } mow;
 
 
@@ -122,7 +138,7 @@ struct allcommands {
   uint8_t R_WOCHENEND_TIMER2_STOP_STD[5] = {0xf,0x4a,0x46,0x0,0x0};
   uint8_t R_WOCHENEND_TIMER2_STOP_MIN[5] = {0xf,0x4a,0x47,0x0,0x0};
   uint8_t R_TIMER_TAGE[5] = {0xf,0x4a,0x50,0x0,0x0};
-  uint8_t R_MAEHZEIT[5] = {0xf,0x0,0x38,0x0,0x0};
+  uint8_t R_MAEHZEIT[5] = {0xf,0x0,0x37,0x0,0x0};
   uint8_t R_VIERECKMODUS_STATUS[5] = {0xf,0x1,0x38,0x0,0x0};
   uint8_t R_VIERECKMODUS_PROZENT[5] = {0xf,0x1,0x34,0x0,0x0};
   uint8_t R_VIERECKMODUS_REFERENZ[5] = {0xf,0x1,0x37,0x0,0x0};
@@ -220,6 +236,54 @@ int processResp(uint8_t *data, uint8_t len, uint32_t t){
       mow.actCutTime.data = respData;
       debugD("Current mowing time: %u.\r\n", mow.actCutTime.data);
       break;
+    
+    case BATCAPMA:
+      mow.batCapMa.t = t;
+      mow.batCapMa.data = (int16_t)respData;
+      debugD("Battery cap MA: %d.\r\n", mow.batCapMa.data);
+      break;
+ 
+    case BATCAPMAH:
+      mow.batCapMah.t = t;
+      mow.batCapMah.data = (int16_t)respData;
+      debugD("Battery cap MAH: %d.\r\n", mow.batCapMah.data);
+      break;
+ 
+    case BATLASTCHRG:
+      mow.batLstChrgTimeMin.t = t;
+      mow.batLstChrgTimeMin.data = respData;
+      debugD("Battery last charge time min: %u.\r\n", mow.batLstChrgTimeMin.data);
+      break;
+ 
+    case BATCAPUSED:
+      mow.batCapUsed.t = t;
+      mow.batCapUsed.data = respData;
+      debugD("Battery cap used: %u.\r\n", mow.batCapUsed.data);
+      break;
+
+    case BATVOLTAGE:
+      mow.batVoltage.t = t;
+      mow.batVoltage.data = respData;
+      debugD("Battery voltage: %u.\r\n", mow.batVoltage.data);
+      break;
+
+    case OPPROZENT:
+      mow.opProcent.t = t;
+      mow.opProcent.data = respData;
+      debugD("Op procent: %u.\r\n", mow.opProcent.data);
+      break;
+
+    case OPREF:
+      mow.opRef.t = t;
+      mow.opRef.data = respData;
+      debugD("Op ref: %u.\r\n", mow.opRef.data);
+      break;
+
+    case OPSTATUS:
+      mow.opStatus.t = t;
+      mow.opStatus.data = respData;
+      debugD("Op status: %u.\r\n", mow.opStatus.data);
+      break;
 
     case READSECONDS:
       debugD("Seconds: %u", respData);
@@ -305,21 +369,23 @@ void syncInternalClock(){
 
 void manModeMowReq(){ // Manual mode request
   sendMowReq(commands.W_MODE_MAN, sizeof(commands.W_MODE_MAN));
-  delay(250);
-  sendMowReq(commands.W_MODE_MAN, sizeof(commands.W_MODE_MAN));
-  delay(250);
-  sendMowReq(commands.W_MODE_MAN, sizeof(commands.W_MODE_MAN));
-  delay(250);
+  yield();
+  delay(100);
+  //sendMowReq(commands.W_MODE_MAN, sizeof(commands.W_MODE_MAN));
+  //delay(250);
+  //sendMowReq(commands.W_MODE_MAN, sizeof(commands.W_MODE_MAN));
+  //delay(250);
 
 } 
 
 void autoModeMowReq(){ // Auto mode request
   sendMowReq(commands.W_MODE_AUTO, sizeof(commands.W_MODE_AUTO));
-  delay(250);
-  sendMowReq(commands.W_MODE_AUTO, sizeof(commands.W_MODE_AUTO));
-  delay(250);
-  sendMowReq(commands.W_MODE_AUTO, sizeof(commands.W_MODE_AUTO));
-  delay(250);
+  yield();
+  delay(100);
+  //sendMowReq(commands.W_MODE_AUTO, sizeof(commands.W_MODE_AUTO));
+  //delay(250);
+  //sendMowReq(commands.W_MODE_AUTO, sizeof(commands.W_MODE_AUTO));
+  //delay(250);
 }
 
 void backupRAM(unsigned long time, uint8_t mowState, rtcStore mem){

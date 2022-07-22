@@ -8,7 +8,7 @@
 // instances
 Ticker sendCommand, readBuffer, wrteLog, getTime; // Tasks
 bool sendCmdFlag=false;
-
+const uint8_t fac = 1;
 //structures
 struct sendStruct {
   bool respRecvd=false;
@@ -27,8 +27,8 @@ void writeLog();
 // Functions
 void startTasks() {
   // Wait 0.5 seconds for mower to start
-  sendCommand.attach(10, sendCmd);    // Task that sends commands periodically.
-  readBuffer.attach(5, readBuf);   // Takes care of data in serial buffer
+  sendCommand.attach(fac*10, sendCmd);    // Task that sends commands periodically.
+  readBuffer.attach(fac*0.25, readBuf);   // Takes care of data in serial buffer
   //wrteLog.attach(10, writeLog);       // Write to log file
   //getTime.attach(5, synchTime);         // Check if we should synchronize clock
 }
@@ -45,13 +45,21 @@ void blockingTasks(){
 
   // Send if timeout or response receieved.
   if((sendTracker.tracker 
-      && (unsigned long)(millis()-sendTracker.t) > 1000) // Wait 1000ms between requests 
+      && (unsigned long)(millis()-sendTracker.t) > 500) // Wait 500ms between requests 
       || sendTracker.respRecvd ){
 
     if(sendTracker.tracker==1) resp=sendMowReq(commands.R_STATUS, sizeof(commands.R_STATUS));
-    //else if (sendTracker.tracker==2) resp=sendMowReq(commands.R_MAEHZEIT , sizeof(commands.R_MAEHZEIT)); // doesnt work always 0
     else if (sendTracker.tracker==2) resp=sendMowReq(commands.R_AKKU_LADEZEIT_MIN , sizeof(commands.R_AKKU_LADEZEIT_MIN));
-    //else if (sendTracker.tracker==2) resp=sendMowReq(commands.R_AKKU_LADEZEIT_MIN , sizeof(commands.R_AKKU_LADEZEIT_MIN));
+    else if (sendTracker.tracker==3) resp=sendMowReq(commands.R_AKKU_KAPAZITAET_MA, sizeof(commands.R_AKKU_KAPAZITAET_MA));
+    else if (sendTracker.tracker==4) resp=sendMowReq(commands.R_AKKU_LETZTER_LADEVORGANG_MIN, sizeof(commands.R_AKKU_LETZTER_LADEVORGANG_MIN));
+    else if (sendTracker.tracker==5) resp=sendMowReq(commands.R_AKKU_SPANNUNG_MV, sizeof(commands.R_AKKU_SPANNUNG_MV));
+    //else if (sendTracker.tracker==2) resp=sendMowReq(commands.R_MAEHZEIT , sizeof(commands.R_MAEHZEIT)); // doesnt work always 0
+    //else if (sendTracker.tracker==4) resp=sendMowReq(commands.R_VIERECKMODUS_STATUS , sizeof(commands.R_VIERECKMODUS_STATUS));
+    //else if (sendTracker.tracker==5) resp=sendMowReq(commands.R_VIERECKMODUS_PROZENT, sizeof(commands.R_VIERECKMODUS_PROZENT));
+    //else if (sendTracker.tracker==6) resp=sendMowReq(commands.R_VIERECKMODUS_REFERENZ, sizeof(commands.R_VIERECKMODUS_REFERENZ));
+    //else if (sendTracker.tracker==8) resp=sendMowReq(commands.R_AKKU_KAPAZITAET_MAH, sizeof(commands.R_AKKU_KAPAZITAET_MAH));
+    //else if (sendTracker.tracker==10) resp=sendMowReq(commands.R_AKKU_KAPAZITAET_GENUTZT_MAH, sizeof(commands.R_AKKU_KAPAZITAET_GENUTZT_MAH));
+    
     if(resp) debugW("Failed to send mowCommand."); 
     // set state of sendTracker so we can track the progress.
     sendTracker.respRecvd = false;
@@ -64,7 +72,7 @@ void blockingTasks(){
 
 // set condition to send requests in blockingTasks()
 void sendCmd(){
-  sendTracker.tracker=2;
+  sendTracker.tracker=5;
 }
 
 // read serial buffer in 5 bytes chunks and process response.
@@ -72,7 +80,15 @@ void readBuf(){
 
   uint8_t recvAutomower[6] = "";
 
-  while (Serial.available() > 0) {            // Read data in 5 bytes chunks.
+  //debugD("Readbuf length: %d/r/n", Serial.available());
+  // Consume characters until 0x0f
+  while( Serial.peek() != 0x0f 
+         && Serial.available() ) {   
+    debugD("Expected 0xf got 0x%x. Removing from buffer.", Serial.peek());
+    Serial.read();
+  }
+
+  while (Serial.available() >= 5) {            // Read data in 5 bytes chunks.
     int n = Serial.readBytes(recvAutomower, 5);
     if ( n > 5 ) debugD("Found more >= 5 bytes in buffer.");
     if ( n == 5) sendTracker.respRecvd=!processResp(recvAutomower, n, millis());        // Process response
