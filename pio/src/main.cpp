@@ -10,6 +10,7 @@
 // includes
 #include <Arduino.h>
 #include <dbgDefs.h>  // Debug definitions
+#include <influx.h> 
 #include <tasks.h>    // Tasks
 #include <wifi.h>     // WIFI settings
 #include <rtc.h>
@@ -149,7 +150,7 @@ void loop() {
 
 void printState(){
   debugI("mowMode: %u, State: %u, mowStateDesired: %u", mowMode, mowState, mowStateDesired);
-  debugI("mowClock: %u:%u:%u, mowTime: %lu", mow.mowClock.hour, mow.mowClock.minute, mow.mowClock.seconds, MOWTIME/(1000*60*60));
+  debugI("mowClock: %u:%u:%u, mowTime: %lu", mow.mowClock.hour, mow.mowClock.minute, mow.mowClock.seconds, MOWTIME/(1000*60));
   debugI("mowStatus: %i, reset_counter: %u, mowTime_b: %lu, mowstate_b: %i, mowstatedesired_b: %i", get_mow_status(), rtcMem.reset_counter, rtcMem.mowTime_b, rtcMem.mowState_b, rtcMem.mowStateDesired_b);
 }
 

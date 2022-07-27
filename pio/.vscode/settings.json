@@ -38,5 +38,6 @@
     "mower.h": "c",
     "remotedebug.h": "c",
     "wifi.h": "c"
-  }
+  },
+  "C_Cpp.dimInactiveRegions": false
 }

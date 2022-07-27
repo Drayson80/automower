@@ -6,7 +6,7 @@
 #include <mower.h>
 
 // instances
-Ticker sendCommand, readBuffer, wrteLog, getTime; // Tasks
+Ticker sendCommand, readBuffer, wrteLog, getTime, sendDB; // Tasks
 bool sendCmdFlag=false;
 const uint8_t fac = 1;
 //structures
@@ -23,12 +23,14 @@ void blockingTasks();
 void sendCmd();
 void readBuf();
 void writeLog();
+void sendToDb();
 
 // Functions
 void startTasks() {
   // Wait 0.5 seconds for mower to start
   sendCommand.attach(fac*10, sendCmd);    // Task that sends commands periodically.
   readBuffer.attach(fac*0.25, readBuf);   // Takes care of data in serial buffer
+  //sendDB.attach(fac*10, sendToDb);
   //wrteLog.attach(10, writeLog);       // Write to log file
   //getTime.attach(5, synchTime);         // Check if we should synchronize clock
 }
@@ -38,6 +40,23 @@ void stopTasks() {
   sendCommand.detach();    // Task that sends commands periodically.
   readBuffer.detach();   // Takes care of data in serial buffer
   //wrteLog.detach();       // Write to log file
+}
+
+// Send measurement data to influxdb
+void sendToDb(){
+  // Store measured value into point
+  status.clearFields();
+  // Report RSSI of currently connected network
+  status.addField("value", mow.stat.data);
+  // Print what are we exactly writing
+  debugD("Writing: ");
+  //debugD("%s", client.pointToLineProtocol(status).c_str());
+
+  // Write point
+  if (!client.writePoint(status)) {
+    debugW("InfluxDB write failed: ");
+    //debugW("%s", client.getLastErrorMessage().c_str());
+  }
 }
 
 void blockingTasks(){
